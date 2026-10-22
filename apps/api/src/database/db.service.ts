@@ -9,6 +9,8 @@ import {
   BlockchainTxStatus,
 } from '../common/types.ts';
 import { CryptoUtils } from '../common/crypto-utils.ts';
+import { PersistentMap } from './persistent-map.ts';
+import { PostgresStore, TABLES } from './postgres.store.ts';
 
 export interface DbOrganization {
   id: string;
@@ -187,22 +189,38 @@ export interface DbInvoice {
 export class DatabaseService {
   private static instance: DatabaseService;
 
-  public organizations: Map<string, DbOrganization> = new Map();
-  public users: Map<string, DbUser> = new Map();
-  public vendors: Map<string, DbVendor> = new Map();
-  public purchase_orders: Map<string, DbPurchaseOrder> = new Map();
-  public purchase_order_items: Map<string, DbPurchaseOrderItem> = new Map();
-  public documents: Map<string, DbDocument> = new Map();
-  public application_events: Map<string, DbApplicationEvent> = new Map();
-  public blockchain_transactions: Map<string, DbBlockchainTransaction> = new Map();
-  public payables: Map<string, DbPayable> = new Map();
-  public goods_receipts: Map<string, DbGoodsReceipt> = new Map();
-  public invoices: Map<string, DbInvoice> = new Map();
+  /**
+   * Persistence adapter Neon Postgres. Bernilai `null` bila `DATABASE_URL` tidak tersedia,
+   * sehingga development lokal tetap berjalan sepenuhnya in-memory seperti sebelumnya.
+   * Catatan: field ini WAJIB dideklarasikan sebelum koleksi di bawah karena initializer
+   * dieksekusi berurutan.
+   */
+  private store: PostgresStore | null = PostgresStore.fromEnv();
+
+  public organizations: Map<string, DbOrganization> = this.createCollection('organizations');
+  public users: Map<string, DbUser> = this.createCollection('users');
+  public vendors: Map<string, DbVendor> = this.createCollection('vendors');
+  public purchase_orders: Map<string, DbPurchaseOrder> = this.createCollection('purchase_orders');
+  public purchase_order_items: Map<string, DbPurchaseOrderItem> = this.createCollection('purchase_order_items');
+  public documents: Map<string, DbDocument> = this.createCollection('documents');
+  public application_events: Map<string, DbApplicationEvent> = this.createCollection('application_events');
+  public blockchain_transactions: Map<string, DbBlockchainTransaction> = this.createCollection('blockchain_transactions');
+  public payables: Map<string, DbPayable> = this.createCollection('payables');
+  public goods_receipts: Map<string, DbGoodsReceipt> = this.createCollection('goods_receipts');
+  public invoices: Map<string, DbInvoice> = this.createCollection('invoices');
 
   private seedPromise: Promise<void> | null = null;
 
   private constructor() {
     this.seedPromise = this.internalSeed();
+  }
+
+  /**
+   * Membuat koleksi: PersistentMap (write-through ke Postgres) bila persistence aktif,
+   * atau Map biasa bila tidak. Keduanya punya API sinkron yang identik.
+   */
+  private createCollection<V extends { id: string }>(name: string): Map<string, V> {
+    return this.store ? this.store.createMap<V>(name) : new Map<string, V>();
   }
 
   public static getInstance(): DatabaseService {
@@ -216,9 +234,76 @@ export class DatabaseService {
     if (this.seedPromise) {
       await this.seedPromise;
     }
+    // Pastikan data seed benar-benar tersimpan sebelum request pertama dilayani.
+    await this.flushPersistence();
+  }
+
+  /** True bila data dipersistensikan ke Neon Postgres (bukan hanya in-memory). */
+  public isPersistenceEnabled(): boolean {
+    return this.store !== null;
+  }
+
+  /** Menunggu seluruh penulisan async selesai. Dipanggil sebelum response dikirim. */
+  public async flushPersistence(): Promise<void> {
+    if (this.store) {
+      await this.store.flush();
+    }
+  }
+
+  /** Memuat hasil query ke Map tanpa memicu tulis balik ke database. */
+  private hydrateFromStore(loaded: Map<string, Record<string, unknown>[]>): void {
+    const hydrate = <V>(map: Map<string, V>, tableName: string): void => {
+      if (!(map instanceof PersistentMap)) return;
+      const rows = loaded.get(tableName) ?? [];
+      map.hydrate(rows.map((row) => [String(row.id), row as unknown as V] as const));
+    };
+
+    hydrate(this.organizations, 'organizations');
+    hydrate(this.users, 'users');
+    hydrate(this.vendors, 'vendors');
+    hydrate(this.purchase_orders, 'purchase_orders');
+    hydrate(this.purchase_order_items, 'purchase_order_items');
+    hydrate(this.documents, 'documents');
+    hydrate(this.application_events, 'application_events');
+    hydrate(this.blockchain_transactions, 'blockchain_transactions');
+    hydrate(this.payables, 'payables');
+    hydrate(this.goods_receipts, 'goods_receipts');
+    hydrate(this.invoices, 'invoices');
+  }
+
+  /**
+   * Menonaktifkan persistence saat koneksi database gagal, lalu beralih ke Map biasa
+   * agar tidak terjadi percobaan tulis yang gagal berulang pada setiap request.
+   */
+  private disablePersistence(): void {
+    if (!this.store) return;
+    this.store = null;
+    for (const table of TABLES) {
+      (this as unknown as Record<string, Map<string, unknown>>)[table.name] = new Map();
+    }
   }
 
   private async internalSeed(): Promise<void> {
+    if (this.store) {
+      try {
+        await this.store.bootstrapSchema();
+        const loaded = await this.store.loadAll();
+        const totalRows = Array.from(loaded.values()).reduce((sum, rows) => sum + rows.length, 0);
+
+        if (totalRows > 0) {
+          // Database sudah berisi data → jadikan sumber kebenaran dan lewati seeding.
+          this.hydrateFromStore(loaded);
+          return;
+        }
+      } catch (err) {
+        console.warn(
+          `[DatabaseService] Postgres persistence tidak aktif (${
+            err instanceof Error ? err.message : String(err)
+          }). Fallback ke in-memory.`,
+        );
+        this.disablePersistence();
+      }
+    }
 
     // 1. Primary Organization
     const defaultOrgId = 'org-001-default-uuid';

@@ -1,92 +1,33 @@
-import express, { Request, Response, NextFunction } from 'express';
+import express, { Request, Response } from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { v4 as uuidv4 } from 'uuid';
 import dotenv from 'dotenv';
-import { createApiRouter } from './apps/api/src/routes.ts';
+import { createApp } from './apps/api/src/app.ts';
 import { OutboxService } from './apps/api/src/modules/outbox/outbox.service.ts';
 import { DatabaseService } from './apps/api/src/database/db.service.ts';
-import { errorResponse } from './apps/api/src/common/response.dto.ts';
 
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+/**
+ * Entry point untuk Node long-running (development lokal, VPS, Docker).
+ * Untuk Vercel serverless, entry point-nya adalah `api/index.ts`.
+ */
 async function startServer() {
-  const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
-  // Initialize DB and Seed data
+  // Initialize DB: bootstrap schema Postgres + hydrate, atau seed in-memory bila tanpa DB.
   const db = DatabaseService.getInstance();
   await db.seedDefaultData();
 
-  // Basic security and request parsing
-  // Capture raw body BEFORE JSON parsing for HMAC webhook verification.
-  // This guarantees we verify the signature over the exact byte-for-byte
-  // payload the Gateway sent, not a re-serialized version.
-  app.use(
-    express.json({
-      limit: '5mb',
-      verify: (req: Request, _res: Response, buf: Buffer, encoding?: BufferEncoding) => {
-        try {
-          (req as unknown as { rawBody?: string }).rawBody = buf.toString(
-            encoding || 'utf8',
-          );
-        } catch {
-          (req as unknown as { rawBody?: string }).rawBody = '';
-        }
-      },
-    }),
-  );
-  app.use(express.urlencoded({ extended: true, limit: '5mb' }));
+  const app = createApp();
 
-  // Attach unique Request ID & security headers
-  app.use((req: Request, res: Response, next: NextFunction) => {
-    const reqId = (req.headers['x-request-id'] as string) || uuidv4();
-    req.requestId = reqId;
-    res.setHeader('X-Request-Id', reqId);
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
-    res.setHeader('X-XSS-Protection', '1; mode=block');
-    next();
-  });
-
-  // CORS middleware
-  app.use((req: Request, res: Response, next: NextFunction) => {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Request-Id');
-    if (req.method === 'OPTIONS') {
-      return res.sendStatus(204);
-    }
-    next();
-  });
-
-  // Mount API Router
-  app.use('/api', createApiRouter());
-
-  // Health check endpoint with infrastructure and blockchain provider status
-  app.get('/api/health', async (_req: Request, res: Response) => {
-    const outbox = OutboxService.getInstance();
-    const bcHealth = await outbox.getBlockchainService().isHealthy();
-    res.status(200).json({
-      status: 'healthy',
-      api: 'ok',
-      database: 'ok',
-      blockchain: bcHealth,
-      timestamp: new Date().toISOString(),
-    });
-  });
-
-  // Global API 404 handler
-  app.all('/api/*', (req: Request, res: Response) => {
-    res.status(404).json(errorResponse('NOT_FOUND', `Route ${req.method} ${req.path} not found`, undefined, req.requestId));
-  });
-
-  // Start Outbox Background Polling Worker
+  // Outbox worker berbasis setInterval hanya valid pada proses yang hidup terus.
+  // Di serverless, pemicunya adalah Vercel Cron → endpoint /api/cron/outbox.
   const outboxService = OutboxService.getInstance();
-  outboxService.startPolling(2500);
+  outboxService.startPolling(Number(process.env.OUTBOX_POLL_INTERVAL_MS) || 2500);
 
   // In development, hook into Vite middlewares
   if (process.env.NODE_ENV !== 'production') {
@@ -105,7 +46,11 @@ async function startServer() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[Enterprise AP Ledger] Server running at http://0.0.0.0:${PORT}`);
+    console.log(
+      `[Enterprise AP Ledger] Server running at http://0.0.0.0:${PORT} (database: ${
+        db.isPersistenceEnabled() ? 'postgres' : 'in-memory'
+      })`,
+    );
   });
 }
 

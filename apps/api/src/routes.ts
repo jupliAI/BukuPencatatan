@@ -539,5 +539,29 @@ export function createApiRouter(): Router {
     }),
   );
 
+  // -------------------------------------------------------------
+  // INTERNAL CRON (Vercel Cron → pengganti outbox setInterval)
+  // -------------------------------------------------------------
+  // Di serverless, worker outbox tidak bisa berjalan sebagai background interval,
+  // sehingga pemicunya adalah cron yang memanggil endpoint ini.
+  router.all(
+    '/cron/outbox',
+    asyncHandler(async (req, res) => {
+      const cronSecret = process.env.CRON_SECRET;
+      if (cronSecret) {
+        const authorization = req.header('authorization') || '';
+        if (authorization !== `Bearer ${cronSecret}`) {
+          return res
+            .status(401)
+            .json(errorResponse('UNAUTHORIZED', 'Invalid cron secret', undefined, req.requestId));
+        }
+      }
+
+      const batchSize = Number(process.env.OUTBOX_BATCH_SIZE) || 20;
+      const result = await outboxService.processPendingEvents(batchSize);
+      return res.status(200).json(successResponse(result));
+    }),
+  );
+
   return router;
 }

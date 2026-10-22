@@ -67,6 +67,20 @@ Capabilities:
   Application: &ApplicationCapabilities
     V2_5: true
 
+Channel: &ChannelDefaults
+  Policies:
+    Readers:
+      Type: ImplicitMeta
+      Rule: "ANY Readers"
+    Writers:
+      Type: ImplicitMeta
+      Rule: "ANY Writers"
+    Admins:
+      Type: ImplicitMeta
+      Rule: "MAJORITY Admins"
+  Capabilities:
+    <<: *ChannelCapabilities
+
 Application: &ApplicationDefaults
   Organizations:
   Policies:
@@ -135,17 +149,3 @@ Profiles:
         - *ProcurementOrg
         - *VendorOrg
       Capabilities: *ApplicationCapabilities
-
-Channel: &ChannelDefaults
-  Policies:
-    Readers:
-      Type: ImplicitMeta
-      Rule: "ANY Readers"
-    Writers:
-      Type: ImplicitMeta
-      Rule: "ANY Writers"
-    Admins:
-      Type: ImplicitMeta
-      Rule: "MAJORITY Admins"
-  Capabilities:
-    <<: *ChannelCapabilities

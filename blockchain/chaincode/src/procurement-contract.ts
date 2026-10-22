@@ -4,7 +4,7 @@ import {
   VALID_ENTITY_TYPES,
   VALID_EVENT_TYPES_PHASE3,
   VerifyHashResult,
-} from './ledger-event.ts';
+} from './ledger-event';
 
 @Info({
   title: 'ProcurementLedgerContract',
@@ -41,7 +41,7 @@ export class ProcurementLedgerContract extends Contract {
 
     if (existingBytes && existingBytes.length > 0) {
       // Deterministic duplicate response for idempotency
-      const existingEvent: LedgerEvent = JSON.parse(existingBytes.toString('utf8'));
+      const existingEvent: LedgerEvent = JSON.parse(Buffer.from(existingBytes).toString('utf8'));
       const duplicateResponse = {
         success: true,
         eventId: existingEvent.eventId,
@@ -66,7 +66,7 @@ export class ProcurementLedgerContract extends Contract {
     let eventIds: string[] = [];
     if (entityIndexBytes && entityIndexBytes.length > 0) {
       try {
-        eventIds = JSON.parse(entityIndexBytes.toString('utf8'));
+        eventIds = JSON.parse(Buffer.from(entityIndexBytes).toString('utf8'));
       } catch {
         eventIds = [];
       }
@@ -115,7 +115,7 @@ export class ProcurementLedgerContract extends Contract {
     if (!eventBytes || eventBytes.length === 0) {
       throw new Error(`Event not found: ${eventId}`);
     }
-    return eventBytes.toString('utf8');
+    return Buffer.from(eventBytes).toString('utf8');
   }
 
   /**
@@ -149,13 +149,13 @@ export class ProcurementLedgerContract extends Contract {
       return JSON.stringify([]);
     }
 
-    const eventIds: string[] = JSON.parse(indexBytes.toString('utf8'));
+    const eventIds: string[] = JSON.parse(Buffer.from(indexBytes).toString('utf8'));
     const events: LedgerEvent[] = [];
 
     for (const id of eventIds) {
       const eventBytes = await ctx.stub.getState(`EVENT:${id}`);
       if (eventBytes && eventBytes.length > 0) {
-        events.push(JSON.parse(eventBytes.toString('utf8')));
+        events.push(JSON.parse(Buffer.from(eventBytes).toString('utf8')));
       }
     }
 
@@ -223,11 +223,11 @@ export class ProcurementLedgerContract extends Contract {
     for (const type of VALID_ENTITY_TYPES) {
       const indexBytes = await ctx.stub.getState(`ENTITY:${type}:${entityId}`);
       if (indexBytes && indexBytes.length > 0) {
-        const eventIds: string[] = JSON.parse(indexBytes.toString('utf8'));
+        const eventIds: string[] = JSON.parse(Buffer.from(indexBytes).toString('utf8'));
         for (const id of eventIds) {
           const eventBytes = await ctx.stub.getState(`EVENT:${id}`);
           if (eventBytes && eventBytes.length > 0) {
-            const ev: LedgerEvent = JSON.parse(eventBytes.toString('utf8'));
+            const ev: LedgerEvent = JSON.parse(Buffer.from(eventBytes).toString('utf8'));
             if (ev.documentHash) {
               storedHash = ev.documentHash;
               if (ev.documentHash.toLowerCase() === documentHash.toLowerCase()) {

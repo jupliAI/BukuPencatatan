@@ -1,6 +1,6 @@
-import { ProcurementLedgerContract } from './procurement-contract.ts';
+import { ProcurementLedgerContract } from './procurement-contract';
 
-export { ProcurementLedgerContract } from './procurement-contract.ts';
-export * from './ledger-event.ts';
+export { ProcurementLedgerContract } from './procurement-contract';
+export * from './ledger-event';
 
 export const contracts: any[] = [ProcurementLedgerContract];
