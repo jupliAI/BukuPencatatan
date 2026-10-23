@@ -4,7 +4,6 @@ import { AuthenticatedUser, Role, OutboxStatus, POStatus } from '../../common/ty
 import { AppError } from '../../common/response.dto.ts';
 import { CryptoUtils } from '../../common/crypto-utils.ts';
 import { MoneyUtils } from '../../common/decimal-utils.ts';
-import { BlockchainFactory } from '../../../../packages/blockchain/src/index.ts';
 
 export interface PayablesFilter {
   period?: string;
