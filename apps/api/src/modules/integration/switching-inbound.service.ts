@@ -2,6 +2,7 @@ import { DatabaseService, DbVendor } from '../../database/db.service.ts';
 import { AuthenticatedUser, Role, UserStatus } from '../../common/types.ts';
 import { AppError } from '../../common/response.dto.ts';
 import { PurchaseOrdersService, CreatePOItemDto } from '../purchase-orders/po.service.ts';
+import { VendorsService, UpdateVendorDto } from '../vendors/vendors.service.ts';
 
 export const PO_ISSUED_TRANSACTION_TYPE = 'PO_ISSUED';
 
@@ -40,6 +41,7 @@ export interface SwitchingLedgerEventBody {
  */
 export class SwitchingInboundService {
   private db = DatabaseService.getInstance();
+  private vendorsService = new VendorsService();
   private poService = new PurchaseOrdersService();
 
   async handleLedgerEvent(body: SwitchingLedgerEventBody) {
@@ -73,11 +75,22 @@ export class SwitchingInboundService {
 
     const payload = body.payload ?? {};
 
-    // Nomor PO milik sistem asal (e-commerce). Pada jalur integrasi kita tidak
-    // pernah menerbitkan nomor sendiri — kalau tidak dikirim, peristiwa ditolak.
+    // Seluruh data PO (nomor, deskripsi, mata uang, jatuh tempo, vendor, item,
+    // harga) milik e-commerce dan diteruskan apa adanya oleh Switching. Tidak
+    // ada nilai cadangan di sini: field yang tidak dikirim selalu ditolak.
     const poNumber = payload.poNumber?.trim();
     if (!poNumber) {
       throw new AppError('VALIDATION_ERROR', 'payload.poNumber is required');
+    }
+
+    const description = payload.description?.trim();
+    if (!description) {
+      throw new AppError('VALIDATION_ERROR', 'payload.description is required');
+    }
+
+    const currency = payload.currency?.trim();
+    if (!currency) {
+      throw new AppError('VALIDATION_ERROR', 'payload.currency is required');
     }
 
     const dueDate = payload.dueDate?.trim();
@@ -86,14 +99,14 @@ export class SwitchingInboundService {
     }
 
     const systemUser = this.resolveSystemUser();
-    const vendor = this.requireVendor(payload.vendor, systemUser);
+    const vendor = await this.resolveVendor(payload.vendor, systemUser);
     const items = this.mapItems(payload.items);
 
     const po = await this.poService.createPO(
       {
         vendor_id: vendor.id,
-        description: payload.description?.trim() || `Switching ${transactionType} ${businessTransactionId}`,
-        currency: payload.currency || 'IDR',
+        description,
+        currency,
         due_date: dueDate,
         items,
         external_ref: businessTransactionId,
@@ -155,14 +168,25 @@ export class SwitchingInboundService {
   }
 
   /**
-   * Master vendor bukan milik Switching, dan kita tidak mengarang data vendor
-   * sendiri. Karena itu vendor harus sudah terdaftar lebih dulu — disuplai dari
-   * e-commerce melalui Switching, atau diinput sekali oleh procurement.
+   * Data vendor datang dari e-commerce bersama PO-nya, karena Switching tidak
+   * menyimpan master vendor sama sekali. Kita tidak pernah mengisi nilai
+   * cadangan (mis. '-') — kalau e-commerce tidak mengirim field wajibnya,
+   * peristiwa ditolak.
+   *
+   * Vendor yang sudah ada tidak ditimpa diam-diam: hanya field yang benar-benar
+   * berbeda yang diperbarui, sehingga perubahan tetap tercatat di ledger.
    */
-  private requireVendor(input: SwitchingVendorPayload | undefined, systemUser: AuthenticatedUser): DbVendor {
+  private async resolveVendor(
+    input: SwitchingVendorPayload | undefined,
+    systemUser: AuthenticatedUser,
+  ): Promise<DbVendor> {
     const code = input?.code?.trim();
     if (!code) {
       throw new AppError('VALIDATION_ERROR', 'payload.vendor.code is required');
+    }
+    const legalName = input?.legalName?.trim();
+    if (!legalName) {
+      throw new AppError('VALIDATION_ERROR', 'payload.vendor.legalName is required');
     }
 
     const existing = Array.from(this.db.vendors.values()).find(
@@ -172,14 +196,48 @@ export class SwitchingInboundService {
     );
 
     if (!existing) {
-      throw new AppError(
-        'VENDOR_NOT_FOUND',
-        `Vendor '${code}' is not registered for this organization. Supply the vendor master data first.`,
-        409,
+      // createVendor menuntut seluruh field identitas terisi, jadi kelengkapan
+      // wajib diperiksa di sini agar pesan errornya jelas dan tidak ada placeholder.
+      const taxId = input?.taxId?.trim();
+      const address = input?.address?.trim();
+      const email = input?.email?.trim();
+      const missing = [
+        !taxId && 'payload.vendor.taxId',
+        !address && 'payload.vendor.address',
+        !email && 'payload.vendor.email',
+      ].filter((field): field is string => Boolean(field));
+      if (missing.length > 0) {
+        throw new AppError(
+          'VALIDATION_ERROR',
+          `${missing.join(', ')} required to register new vendor '${code}'`,
+        );
+      }
+
+      return this.vendorsService.createVendor(
+        {
+          vendor_code: code,
+          legal_name: legalName,
+          tax_id: taxId!,
+          address: address!,
+          contact_email: email!,
+        },
+        systemUser,
       );
     }
 
-    return existing;
+    const changes: UpdateVendorDto = {};
+    if (existing.legal_name !== legalName) changes.legal_name = legalName;
+    const taxId = input?.taxId?.trim();
+    if (taxId && existing.tax_id !== taxId) changes.tax_id = taxId;
+    const address = input?.address?.trim();
+    if (address && existing.address !== address) changes.address = address;
+    const email = input?.email?.trim();
+    if (email && existing.contact_email !== email.toLowerCase()) changes.contact_email = email;
+
+    if (Object.keys(changes).length === 0) {
+      return existing;
+    }
+    return this.vendorsService.updateVendor(existing.id, changes, systemUser);
   }
 
   private mapItems(
@@ -191,15 +249,21 @@ export class SwitchingInboundService {
 
     return items.map((item, index) => {
       const unitPrice = item?.unitPrice;
-      if (!item?.description || unitPrice === undefined || unitPrice === null) {
+      if (
+        !item?.description ||
+        item.quantity === undefined ||
+        item.quantity === null ||
+        unitPrice === undefined ||
+        unitPrice === null
+      ) {
         throw new AppError(
           'VALIDATION_ERROR',
-          `payload.items[${index}] requires description and unitPrice`,
+          `payload.items[${index}] requires description, quantity and unitPrice`,
         );
       }
       return {
         description: item.description,
-        quantity: item.quantity ?? 1,
+        quantity: item.quantity,
         unit_price: String(unitPrice),
       };
     });

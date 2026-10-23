@@ -219,6 +219,7 @@ export async function runAllTests(): Promise<{ passed: number; failed: number }>
       {
         vendor_id: 'vend-001-default-uuid',
         description: 'New Datacenter Servers',
+        external_po_number: 'PO-TEST-001',
         due_date: '2026-11-30',
         currency: 'IDR',
         items: [
@@ -250,6 +251,8 @@ export async function runAllTests(): Promise<{ passed: number; failed: number }>
         {
           vendor_id: 'vend-001-default-uuid',
           description: 'Invalid Item PO',
+          external_po_number: 'PO-TEST-002',
+          currency: 'IDR',
           due_date: '2026-12-30',
           items: [{ description: 'Broken Quantity', quantity: 0, unit_price: '1000.00' }],
         },
@@ -348,6 +351,8 @@ export async function runAllTests(): Promise<{ passed: number; failed: number }>
       {
         vendor_id: 'vend-001-default-uuid',
         description: 'Test Failure Handling PO',
+        external_po_number: 'PO-TEST-003',
+        currency: 'IDR',
         due_date: '2026-12-31',
         items: [{ description: 'Test Item', quantity: 1, unit_price: '1000.00' }],
       },

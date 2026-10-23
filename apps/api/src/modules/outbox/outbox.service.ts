@@ -72,7 +72,8 @@ export class OutboxService {
         organizationId: event.organization_id || undefined,
         amountMinor,
         amountMinorUnits: amountMinor,
-        currency: ((event.payload as Record<string, unknown>)?.currency as string) || 'IDR',
+        // Mata uang hanya diambil dari payload peristiwa; tidak ada cadangan.
+        currency: (event.payload as Record<string, unknown>)?.currency as string | undefined,
         documentHash: docHash,
         metadata: event.payload,
         timestamp: event.created_at.toISOString(),

@@ -15,13 +15,17 @@ export interface CreatePODto {
   vendor_id: string;
   buyer_organization_id?: string;
   description: string;
-  currency?: string;
+  /** Mata uang PO, berasal dari sistem asal (e-commerce). Wajib — tidak ada nilai cadangan. */
+  currency: string;
   due_date: string;
   items: CreatePOItemDto[];
   /** Referensi dari sistem asal (mis. businessTransactionId Switching) untuk dedupe peristiwa masuk. */
   external_ref?: string;
-  /** Nomor PO milik sistem asal. Bila kosong, nomor digenerate di sini. */
-  external_po_number?: string;
+  /**
+   * Nomor PO milik sistem asal (e-commerce), wajib. Aplikasi tidak pernah
+   * menerbitkan nomor PO sendiri.
+   */
+  external_po_number: string;
 }
 
 export interface UpdatePODto {
@@ -41,25 +45,18 @@ export interface POFilterQuery {
 export class PurchaseOrdersService {
   private db = DatabaseService.getInstance();
 
-  private generatePONumber(buyerOrgId: string): string {
-    const year = new Date().getFullYear();
-    let count = 1;
-    for (const po of this.db.purchase_orders.values()) {
-      if (po.buyer_organization_id === buyerOrgId) {
-        count++;
-      }
-    }
-    return `PO-${year}-${String(count).padStart(3, '0')}`;
-  }
-
   /**
    * PO pada jalur integrasi diterbitkan sistem lain, sehingga nomornya milik
-   * sistem asal dan harus dipakai apa adanya (dengan cek keunikan).
+   * sistem asal dan dipakai apa adanya (dengan cek keunikan). Aplikasi tidak
+   * pernah membuat nomor PO sendiri: kalau nomor asal tidak ada, PO ditolak.
    */
-  private resolvePONumber(orgId: string, requested?: string): string {
+  private resolvePONumber(requested: string): string {
     const trimmed = requested?.trim();
     if (!trimmed) {
-      return this.generatePONumber(orgId);
+      throw new AppError(
+        'VALIDATION_ERROR',
+        'Purchase order number from the source system is required',
+      );
     }
     for (const po of this.db.purchase_orders.values()) {
       if (po.po_number.toUpperCase() === trimmed.toUpperCase()) {
@@ -70,8 +67,18 @@ export class PurchaseOrdersService {
   }
 
   async createPO(dto: CreatePODto, currentUser: AuthenticatedUser): Promise<DbPurchaseOrder & { items: DbPurchaseOrderItem[] }> {
-    if (!dto.vendor_id || !dto.description || !dto.due_date || !Array.isArray(dto.items) || dto.items.length === 0) {
-      throw new AppError('VALIDATION_ERROR', 'Vendor, description, due date, and at least one item are required');
+    if (
+      !dto.vendor_id ||
+      !dto.description ||
+      !dto.currency ||
+      !dto.due_date ||
+      !Array.isArray(dto.items) ||
+      dto.items.length === 0
+    ) {
+      throw new AppError(
+        'VALIDATION_ERROR',
+        'Vendor, description, currency, due date, and at least one item are required',
+      );
     }
 
     const orgId = currentUser.role === Role.ADMIN && dto.buyer_organization_id ? dto.buyer_organization_id : currentUser.organizationId;
@@ -121,7 +128,7 @@ export class PurchaseOrdersService {
     // Calculate server-side total: never trust client for monetary total
     const totalAmount = MoneyUtils.sumTotals(itemTotals);
 
-    const poNumber = this.resolvePONumber(orgId, dto.external_po_number);
+    const poNumber = this.resolvePONumber(dto.external_po_number);
     const newPO: DbPurchaseOrder = {
       id: poId,
       po_number: poNumber,
@@ -129,7 +136,7 @@ export class PurchaseOrdersService {
       buyer_organization_id: orgId,
       description: dto.description.trim(),
       total_amount: totalAmount,
-      currency: (dto.currency || 'IDR').toUpperCase(),
+      currency: dto.currency.trim().toUpperCase(),
       issue_date: null,
       due_date: new Date(dto.due_date),
       status: POStatus.DRAFT,

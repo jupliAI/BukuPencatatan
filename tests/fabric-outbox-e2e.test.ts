@@ -119,6 +119,7 @@ export async function runFabricOutboxE2ETests(): Promise<{ passed: number; faile
         vendor_id: vendorId,
         currency: 'IDR',
         description: 'Fabric Phase 3 Enterprise Hardware Procurement',
+        external_po_number: 'PO-FABRIC-E2E-001',
         due_date: new Date(Date.now() + 30 * 86400000).toISOString(),
         items: [
           {
