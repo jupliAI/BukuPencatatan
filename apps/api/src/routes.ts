@@ -96,31 +96,14 @@ export function createApiRouter(): Router {
     })
   );
 
-  router.post(
-    '/vendors',
-    authMiddleware,
-    requireRoles(Role.ADMIN, Role.PROCUREMENT_OFFICER),
-    asyncHandler(async (req, res) => {
-      const result = await vendorsService.createVendor(req.body, req.user!);
-      return res.status(201).json(successResponse(result));
-    })
-  );
+  // Catatan: tidak ada endpoint untuk membuat vendor di sini. Data vendor
+  // datang dari e-commerce melalui Switching (lihat /v1/integration/ledger-events).
 
   router.get(
     '/vendors/:id',
     authMiddleware,
     asyncHandler(async (req, res) => {
       const result = await vendorsService.getVendorById(req.params.id, req.user!);
-      return res.status(200).json(successResponse(result));
-    })
-  );
-
-  router.patch(
-    '/vendors/:id',
-    authMiddleware,
-    requireRoles(Role.ADMIN, Role.PROCUREMENT_OFFICER),
-    asyncHandler(async (req, res) => {
-      const result = await vendorsService.updateVendor(req.params.id, req.body, req.user!);
       return res.status(200).json(successResponse(result));
     })
   );
@@ -153,72 +136,9 @@ export function createApiRouter(): Router {
     })
   );
 
-  router.patch(
-    '/purchase-orders/:id',
-    authMiddleware,
-    requireRoles(Role.ADMIN, Role.PROCUREMENT_OFFICER),
-    asyncHandler(async (req, res) => {
-      const result = await poService.updatePO(req.params.id, req.body, req.user!);
-      return res.status(200).json(successResponse(result));
-    })
-  );
-
-  router.post(
-    '/purchase-orders/:id/issue',
-    authMiddleware,
-    requireRoles(Role.ADMIN, Role.PROCUREMENT_OFFICER),
-    asyncHandler(async (req, res) => {
-      const documentHash = req.body?.document_hash || req.body?.documentHash;
-      const result = await poService.issuePO(req.params.id, req.user!, documentHash);
-      return res.status(200).json(successResponse(result));
-    })
-  );
-
-  router.post(
-    '/purchase-orders/:id/cancel',
-    authMiddleware,
-    requireRoles(Role.ADMIN, Role.PROCUREMENT_OFFICER),
-    asyncHandler(async (req, res) => {
-      const { reason } = req.body || {};
-      const result = await poService.cancelPO(req.params.id, reason, req.user!);
-      return res.status(200).json(successResponse(result));
-    })
-  );
-
-  // -------------------------------------------------------------
-  // PROCUREMENT LIFECYCLE: GOODS RECEIPT & VERIFICATION
-  // -------------------------------------------------------------
-  router.post(
-    '/purchase-orders/:id/goods-receipt',
-    authMiddleware,
-    requireRoles(Role.ADMIN, Role.PROCUREMENT_OFFICER, Role.VENDOR),
-    asyncHandler(async (req, res) => {
-      const { delivery_note_number, notes } = req.body || {};
-      if (!delivery_note_number) {
-        throw new AppError('VALIDATION_ERROR', 'delivery_note_number (Nomor Surat Jalan) is required', 400);
-      }
-      const result = await payablesService.recordGoodsReceipt(
-        req.params.id,
-        { delivery_note_number, notes },
-        req.user!
-      );
-      return res.status(201).json(successResponse(result));
-    })
-  );
-
-  router.post(
-    '/purchase-orders/:id/verify-goods',
-    authMiddleware,
-    requireRoles(Role.ADMIN, Role.PROCUREMENT_OFFICER, Role.PPK),
-    asyncHandler(async (req, res) => {
-      const { receipt_id } = req.body || {};
-      if (!receipt_id) {
-        throw new AppError('VALIDATION_ERROR', 'receipt_id is required', 400);
-      }
-      const result = await payablesService.verifyGoodsReceipt(req.params.id, receipt_id, req.user!);
-      return res.status(200).json(successResponse(result));
-    })
-  );
+  // Catatan: tidak ada endpoint untuk membuat, mengubah, menerbitkan, atau
+  // membatalkan PO di sini. Seluruh PO berasal dari e-commerce melalui
+  // Switching (lihat /v1/integration/ledger-events).
 
   // -------------------------------------------------------------
   // ACCOUNTS PAYABLE LEDGER (BUKU BESAR UTANG) ENDPOINTS
@@ -258,77 +178,8 @@ export function createApiRouter(): Router {
     })
   );
 
-  router.post(
-    '/payables/from-po/:poId',
-    authMiddleware,
-    requireRoles(Role.ADMIN, Role.PROCUREMENT_OFFICER, Role.FINANCE, Role.PPK),
-    asyncHandler(async (req, res) => {
-      const { invoice_number, period, due_date } = req.body || {};
-      if (!invoice_number || !due_date) {
-        throw new AppError('VALIDATION_ERROR', 'invoice_number and due_date are required', 400);
-      }
-      const result = await payablesService.createPayableFromPO(
-        req.params.poId,
-        { invoice_number, period: period || 'Bulan 1', due_date },
-        req.user!
-      );
-      return res.status(201).json(successResponse(result));
-    })
-  );
-
-  router.post(
-    '/payables/:id/approve',
-    authMiddleware,
-    requireRoles(Role.ADMIN, Role.PROCUREMENT_OFFICER, Role.PPK, Role.FINANCE, Role.AUTHORIZED_OFFICER),
-    asyncHandler(async (req, res) => {
-      const { notes } = req.body || {};
-      const result = await payablesService.approvePayable(req.params.id, notes, req.user!);
-      return res.status(200).json(successResponse(result));
-    })
-  );
-
-  router.post(
-    '/payables/:id/initiate-payment',
-    authMiddleware,
-    requireRoles(Role.ADMIN, Role.FINANCE, Role.AUTHORIZED_OFFICER, Role.PAYMENT_SYSTEM),
-    asyncHandler(async (req, res) => {
-      const { payment_reference, notes } = req.body || {};
-      if (!payment_reference) {
-        throw new AppError('VALIDATION_ERROR', 'payment_reference (Nomor SP2D/Transfer) is required', 400);
-      }
-      const result = await payablesService.initiatePayment(
-        req.params.id,
-        { payment_reference, notes },
-        req.user!
-      );
-      return res.status(200).json(successResponse(result));
-    })
-  );
-
-  router.post(
-    '/payables/:id/settle',
-    authMiddleware,
-    requireRoles(Role.ADMIN, Role.FINANCE, Role.AUTHORIZED_OFFICER, Role.PAYMENT_SYSTEM),
-    asyncHandler(async (req, res) => {
-      const { payment_reference } = req.body || {};
-      const result = await payablesService.settlePayable(req.params.id, payment_reference, req.user!);
-      return res.status(200).json(successResponse(result));
-    })
-  );
-
-  router.post(
-    '/payables/batch-settle',
-    authMiddleware,
-    requireRoles(Role.ADMIN, Role.FINANCE, Role.AUTHORIZED_OFFICER),
-    asyncHandler(async (req, res) => {
-      const { period } = req.body || {};
-      if (!period) {
-        throw new AppError('VALIDATION_ERROR', 'period parameter is required', 400);
-      }
-      const result = await payablesService.batchSettlePeriod(period, req.user!);
-      return res.status(200).json(successResponse(result));
-    })
-  );
+  // Catatan: utang hanya dibaca dari catatan yang masuk. Tidak ada endpoint
+  // untuk membuat utang, menyetujui, mencairkan, atau melunasi di sini.
 
   // -------------------------------------------------------------
   // TAMPER-EVIDENT DETECTION LAB & INTEGRITY AUDIT

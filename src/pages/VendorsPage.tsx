@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Vendor, User } from '../types.ts';
 import { ApiClient } from '../api.ts';
-import { Users, Plus, Search, Building2, Mail, MapPin, FileCheck, AlertCircle, X } from 'lucide-react';
+import { Users, Search, Mail, MapPin, FileCheck } from 'lucide-react';
 
 interface VendorsPageProps {
   currentUser: User;
@@ -11,16 +11,6 @@ export const VendorsPage: React.FC<VendorsPageProps> = ({ currentUser }) => {
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // Form State
-  const [vendorCode, setVendorCode] = useState('');
-  const [legalName, setLegalName] = useState('');
-  const [taxId, setTaxId] = useState('');
-  const [address, setAddress] = useState('');
-  const [contactEmail, setContactEmail] = useState('');
 
   const loadVendors = async () => {
     setLoading(true);
@@ -38,34 +28,6 @@ export const VendorsPage: React.FC<VendorsPageProps> = ({ currentUser }) => {
     loadVendors();
   }, [search]);
 
-  const handleCreateVendor = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSubmitting(true);
-    setError(null);
-    try {
-      await ApiClient.createVendor({
-        vendor_code: vendorCode,
-        legal_name: legalName,
-        tax_id: taxId,
-        address,
-        contact_email: contactEmail,
-      });
-      setShowModal(false);
-      setVendorCode('');
-      setLegalName('');
-      setTaxId('');
-      setAddress('');
-      setContactEmail('');
-      await loadVendors();
-    } catch (err: any) {
-      setError(err.message || 'Failed to create vendor');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const canCreate = currentUser.role === 'ADMIN' || currentUser.role === 'PROCUREMENT_OFFICER';
-
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -79,16 +41,6 @@ export const VendorsPage: React.FC<VendorsPageProps> = ({ currentUser }) => {
             Compliant suppliers registered under organization <span className="font-semibold text-slate-300">{currentUser.organization.code}</span>
           </p>
         </div>
-
-        {canCreate && (
-          <button
-            onClick={() => setShowModal(true)}
-            className="px-4 py-2.5 bg-teal-600 hover:bg-teal-500 text-white rounded-xl text-xs font-semibold shadow-md shadow-teal-600/20 transition flex items-center gap-1.5"
-          >
-            <Plus className="w-4 h-4" />
-            Register Vendor
-          </button>
-        )}
       </div>
 
       {/* Filter / Search Bar */}
@@ -153,122 +105,6 @@ export const VendorsPage: React.FC<VendorsPageProps> = ({ currentUser }) => {
           </div>
         )}
       </div>
-
-      {/* Register Vendor Modal */}
-      {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-6 shadow-2xl">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-800">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <Building2 className="w-5 h-5 text-teal-400" />
-                Register New Vendor
-              </h3>
-              <button
-                onClick={() => setShowModal(false)}
-                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {error && (
-              <div className="mt-4 p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-300 text-xs flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>{error}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleCreateVendor} className="mt-4 space-y-3.5">
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1">
-                  Vendor Code
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. VEND-002"
-                  value={vendorCode}
-                  onChange={(e) => setVendorCode(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-xs text-white uppercase focus:outline-none focus:ring-2 focus:ring-teal-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1">
-                  Legal Entity Name
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. PT Mandiri Solusi Pratama"
-                  value={legalName}
-                  onChange={(e) => setLegalName(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:ring-2 focus:ring-teal-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1">
-                  Tax Identification Number (NPWP)
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. 01.234.567.8-012.000"
-                  value={taxId}
-                  onChange={(e) => setTaxId(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-xs text-white font-mono focus:outline-none focus:ring-2 focus:ring-teal-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1">
-                  Contact Email
-                </label>
-                <input
-                  type="email"
-                  required
-                  placeholder="billing@mandirisolusi.co.id"
-                  value={contactEmail}
-                  onChange={(e) => setContactEmail(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:ring-2 focus:ring-teal-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1">
-                  Registered Address
-                </label>
-                <textarea
-                  rows={2}
-                  required
-                  placeholder="Office address, city, province"
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:ring-2 focus:ring-teal-500"
-                />
-              </div>
-
-              <div className="pt-3 border-t border-slate-800 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowModal(false)}
-                  className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium transition"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white rounded-lg text-xs font-semibold shadow-md shadow-teal-600/20 transition disabled:opacity-50"
-                >
-                  {submitting ? 'Registering...' : 'Register Vendor'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

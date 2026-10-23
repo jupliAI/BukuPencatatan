@@ -93,19 +93,6 @@ export const ApiClient = {
     return this.request(`/vendors?${query.toString()}`);
   },
 
-  async createVendor(dto: {
-    vendor_code: string;
-    legal_name: string;
-    tax_id: string;
-    address: string;
-    contact_email: string;
-  }): Promise<Vendor> {
-    return this.request<Vendor>('/vendors', {
-      method: 'POST',
-      body: JSON.stringify(dto),
-    });
-  },
-
   // Purchase Orders
   async getPurchaseOrders(params: { status?: string; search?: string } = {}): Promise<{ items: PurchaseOrder[]; pagination: any }> {
     const query = new URLSearchParams();
@@ -116,20 +103,6 @@ export const ApiClient = {
 
   async getPurchaseOrder(id: string): Promise<PurchaseOrder> {
     return this.request<PurchaseOrder>(`/purchase-orders/${id}`);
-  },
-
-  async issuePurchaseOrder(id: string, documentHash?: string) {
-    return this.request(`/purchase-orders/${id}/issue`, {
-      method: 'POST',
-      body: JSON.stringify({ document_hash: documentHash }),
-    });
-  },
-
-  async cancelPurchaseOrder(id: string, reason?: string) {
-    return this.request(`/purchase-orders/${id}/cancel`, {
-      method: 'POST',
-      body: JSON.stringify({ reason }),
-    });
   },
 
   // Audit Outbox
@@ -193,44 +166,6 @@ export const ApiClient = {
     return this.request<Payable>(`/payables/${id}`);
   },
 
-  async createPayableFromPO(
-    poId: string,
-    dto: { invoice_number: string; period: string; due_date: string }
-  ): Promise<Payable> {
-    return this.request<Payable>(`/payables/from-po/${poId}`, {
-      method: 'POST',
-      body: JSON.stringify(dto),
-    });
-  },
-
-  async approvePayable(id: string, notes?: string): Promise<Payable> {
-    return this.request<Payable>(`/payables/${id}/approve`, {
-      method: 'POST',
-      body: JSON.stringify({ notes }),
-    });
-  },
-
-  async initiatePayment(id: string, dto: { payment_reference: string; notes?: string }): Promise<Payable> {
-    return this.request<Payable>(`/payables/${id}/initiate-payment`, {
-      method: 'POST',
-      body: JSON.stringify(dto),
-    });
-  },
-
-  async settlePayable(id: string, payment_reference?: string): Promise<Payable> {
-    return this.request<Payable>(`/payables/${id}/settle`, {
-      method: 'POST',
-      body: JSON.stringify({ payment_reference }),
-    });
-  },
-
-  async batchSettle(period: string): Promise<{ period: string; count: number; settled: Payable[] }> {
-    return this.request('/payables/batch-settle', {
-      method: 'POST',
-      body: JSON.stringify({ period }),
-    });
-  },
-
   // Tamper-Evident Lab & Audit Integrity
   async auditPayableIntegrity(id: string): Promise<TamperAuditResponse> {
     return this.request<TamperAuditResponse>(`/payables/${id}/audit-integrity`);
@@ -246,24 +181,6 @@ export const ApiClient = {
   async restorePayable(id: string): Promise<Payable> {
     return this.request<Payable>(`/payables/${id}/tamper-restore`, {
       method: 'POST',
-    });
-  },
-
-  // Goods Receipt & Verification
-  async recordGoodsReceipt(
-    poId: string,
-    dto: { delivery_note_number: string; notes?: string }
-  ) {
-    return this.request(`/purchase-orders/${poId}/goods-receipt`, {
-      method: 'POST',
-      body: JSON.stringify(dto),
-    });
-  },
-
-  async verifyGoodsReceipt(poId: string, receipt_id: string) {
-    return this.request(`/purchase-orders/${poId}/verify-goods`, {
-      method: 'POST',
-      body: JSON.stringify({ receipt_id }),
     });
   },
 };

@@ -1,4 +1,5 @@
 import assert from 'assert';
+import { pathToFileURL } from 'node:url';
 import { AuthService } from '../apps/api/src/modules/auth/auth.service.ts';
 import { VendorsService } from '../apps/api/src/modules/vendors/vendors.service.ts';
 import { PurchaseOrdersService } from '../apps/api/src/modules/purchase-orders/po.service.ts';
@@ -198,7 +199,7 @@ export async function runAllTests(): Promise<{ passed: number; failed: number }>
   // ========================================================
   // 3. PURCHASE ORDER & MONETARY ACCURACY TESTS
   // ========================================================
-  console.log('\n\x1b[36mSuite 3: Purchase Order Lifecycle & Safe Money Rules\x1b[0m');
+  console.log('\n\x1b[36mSuite 3: Purchase Order Intake & Safe Money Rules\x1b[0m');
 
   let testPoId = '';
 
@@ -264,39 +265,9 @@ export async function runAllTests(): Promise<{ passed: number; failed: number }>
     }
   });
 
-  await test('Cannot issue PO with inactive vendor', async () => {
-    const vendor = db.vendors.get('vend-001-default-uuid')!;
-    vendor.status = VendorStatus.SUSPENDED;
-    try {
-      await poService.issuePO(testPoId, procUser);
-      assert.fail('Should reject issuing to suspended vendor');
-    } catch (err: any) {
-      assert.strictEqual(err.code, 'INACTIVE_VENDOR');
-    } finally {
-      vendor.status = VendorStatus.ACTIVE;
-    }
-  });
-
-  await test('Issue PO transitions state to ISSUED and creates PO_ISSUED outbox event', async () => {
-    const result = await poService.issuePO(testPoId, procUser);
-    assert.strictEqual(result.status, POStatus.ISSUED);
-    assert(result.issue_date, 'Issue date must be populated');
-
-    const event = Array.from(db.application_events.values()).find(
-      (e) => e.entity_id === testPoId && e.event_type === 'PO_ISSUED'
-    );
-    assert(event, 'PO_ISSUED event must be in outbox');
-    assert.strictEqual(event.status, OutboxStatus.PENDING);
-  });
-
-  await test('Invalid state transition: Cannot re-issue already ISSUED purchase order', async () => {
-    try {
-      await poService.issuePO(testPoId, procUser);
-      assert.fail('Re-issuing should fail');
-    } catch (err: any) {
-      assert.strictEqual(err.code, 'INVALID_STATE_TRANSITION');
-    }
-  });
+  // Catatan: PO tidak diterbitkan atau diubah dari dalam aplikasi ini. Peristiwa
+  // lanjutan siklus hidup PO (mis. PO_ISSUED) hanya lahir dari e-commerce via
+  // Switching, sehingga tidak ada lagi pengujian transisi state di sini.
 
   await test('Cross-organization access is rejected (ORG-002 officer cannot touch ORG-001 PO)', async () => {
     try {
@@ -305,19 +276,6 @@ export async function runAllTests(): Promise<{ passed: number; failed: number }>
     } catch (err: any) {
       assert.strictEqual(err.code, 'FORBIDDEN');
       assert.strictEqual(err.statusCode, 403);
-    }
-  });
-
-  await test('Cancel PO transitions state to CANCELLED and disallows further edits', async () => {
-    const cancelRes = await poService.cancelPO(testPoId, 'Procurement plan revised', procUser);
-    assert.strictEqual(cancelRes.status, POStatus.CANCELLED);
-
-    // Further issue or update attempts MUST fail
-    try {
-      await poService.issuePO(testPoId, procUser);
-      assert.fail('Cancelled PO cannot be issued');
-    } catch (err: any) {
-      assert.strictEqual(err.code, 'INVALID_STATE_TRANSITION');
     }
   });
 
@@ -383,7 +341,7 @@ export async function runAllTests(): Promise<{ passed: number; failed: number }>
   return { passed, failed };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   runAllTests().then((res) => {
     if (res.failed > 0) process.exit(1);
     else process.exit(0);

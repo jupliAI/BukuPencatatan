@@ -2,19 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { PurchaseOrder, User, LedgerHistoryResponse, VerifyHashResponse } from '../types.ts';
 import { ApiClient } from '../api.ts';
 import {
-  FileText,
   ArrowLeft,
-  Building,
-  Calendar,
   ShieldCheck,
   ShieldAlert,
   Clock,
   AlertCircle,
-  CheckCircle,
   CheckCircle2,
-  XCircle,
-  Send,
-  Ban,
   User as UserIcon,
   Hash,
   Copy,
@@ -35,22 +28,7 @@ export const PurchaseOrderDetailPage: React.FC<PurchaseOrderDetailPageProps> = (
 }) => {
   const [po, setPo] = useState<PurchaseOrder | null>(null);
   const [loading, setLoading] = useState(true);
-  const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [successMsg, setSuccessMsg] = useState<string | null>(null);
-  const [showCancelModal, setShowCancelModal] = useState(false);
-  const [cancelReason, setCancelReason] = useState('Procurement obligation revised');
-  const [showIssueModal, setShowIssueModal] = useState(false);
-  const [issueDocHash, setIssueDocHash] = useState('');
-
-  // Goods Receipt & Payable Creation States
-  const [showReceiptModal, setShowReceiptModal] = useState(false);
-  const [deliveryNoteNumber, setDeliveryNoteNumber] = useState('');
-  const [receiptNotes, setReceiptNotes] = useState('');
-  const [showPayableModal, setShowPayableModal] = useState(false);
-  const [invoiceNumber, setInvoiceNumber] = useState('');
-  const [payablePeriod, setPayablePeriod] = useState('Bulan 1');
-  const [payableDueDate, setPayableDueDate] = useState('2026-04-30');
 
   // Ledger Verification & History State
   const [ledgerHistory, setLedgerHistory] = useState<LedgerHistoryResponse | null>(null);
@@ -93,24 +71,6 @@ export const PurchaseOrderDetailPage: React.FC<PurchaseOrderDetailPageProps> = (
     loadPO();
   }, [poId]);
 
-  const handleIssueConfirm = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!po) return;
-    setActionLoading(true);
-    setError(null);
-    setSuccessMsg(null);
-    try {
-      await ApiClient.issuePurchaseOrder(po.id, issueDocHash.trim() || undefined);
-      setShowIssueModal(false);
-      setSuccessMsg('Purchase order successfully ISSUED and committed to Hyperledger Fabric outbox.');
-      await loadPO();
-    } catch (err: any) {
-      setError(err.message || 'Failed to issue purchase order');
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
   const handleVerifyOnLedger = async () => {
     if (!po) return;
     const targetHash = po.document_hash || '9f833a6a9b40f3b432a6136d8fe8871b69f6e65ad5ad155a019e07507fc36d93';
@@ -142,73 +102,6 @@ export const PurchaseOrderDetailPage: React.FC<PurchaseOrderDetailPageProps> = (
     setTimeout(() => setCopiedHash(false), 2000);
   };
 
-  const handleCancel = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!po) return;
-    setActionLoading(true);
-    setError(null);
-    setSuccessMsg(null);
-    try {
-      await ApiClient.cancelPurchaseOrder(po.id, cancelReason);
-      setShowCancelModal(false);
-      setSuccessMsg('Purchase order successfully CANCELLED.');
-      await loadPO();
-    } catch (err: any) {
-      setError(err.message || 'Failed to cancel purchase order');
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const handleRecordReceipt = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!po) return;
-    setActionLoading(true);
-    setError(null);
-    setSuccessMsg(null);
-    try {
-      await ApiClient.recordGoodsReceipt(po.id, {
-        delivery_note_number: deliveryNoteNumber,
-        notes: receiptNotes,
-      });
-      await ApiClient.triggerProcessOutbox().catch(() => {});
-      setShowReceiptModal(false);
-      setDeliveryNoteNumber('');
-      setReceiptNotes('');
-      setSuccessMsg('Penerimaan barang (Surat Jalan/BAST) berhasil dicatat & disinkronkan ke Fabric.');
-      await loadPO();
-    } catch (err: any) {
-      setError(err.message || 'Gagal mencatat penerimaan barang');
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const handleCreatePayable = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!po) return;
-    setActionLoading(true);
-    setError(null);
-    setSuccessMsg(null);
-    try {
-      await ApiClient.createPayableFromPO(po.id, {
-        invoice_number: invoiceNumber,
-        period: payablePeriod,
-        due_date: payableDueDate,
-      });
-      await ApiClient.triggerProcessOutbox().catch(() => {});
-      setShowPayableModal(false);
-      setInvoiceNumber('');
-      setSuccessMsg('Kewajiban pembayaran (Accounts Payable) berhasil dibuat & disegel di Hyperledger Fabric!');
-      await loadPO();
-      onNavigate('accounts-payable');
-    } catch (err: any) {
-      setError(err.message || 'Gagal membuat kewajiban pembayaran');
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
   if (loading) {
     return <div className="py-12 text-center text-xs text-slate-500">Loading purchase order details...</div>;
   }
@@ -227,11 +120,9 @@ export const PurchaseOrderDetailPage: React.FC<PurchaseOrderDetailPageProps> = (
     );
   }
 
-  const canMutate = currentUser.role === 'ADMIN' || currentUser.role === 'PROCUREMENT_OFFICER';
-
   return (
     <div className="max-w-5xl mx-auto space-y-6">
-      {/* Back button & Action Header */}
+      {/* Back button & Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="flex items-center gap-3">
           <button
@@ -267,57 +158,6 @@ export const PurchaseOrderDetailPage: React.FC<PurchaseOrderDetailPageProps> = (
             <p className="text-xs text-slate-400 mt-0.5">Created on {new Date(po.created_at).toLocaleString()}</p>
           </div>
         </div>
-
-        {/* Action Buttons */}
-        {canMutate && (
-          <div className="flex flex-wrap items-center gap-2">
-            {po.status === 'DRAFT' && (
-              <button
-                onClick={() => setShowIssueModal(true)}
-                disabled={actionLoading}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold shadow-md shadow-blue-600/20 transition flex items-center gap-1.5 disabled:opacity-50"
-              >
-                <Send className="w-3.5 h-3.5" />
-                Issue Purchase Order
-              </button>
-            )}
-
-            {po.status === 'ISSUED' && (
-              <>
-                <button
-                  onClick={() => setShowReceiptModal(true)}
-                  disabled={actionLoading}
-                  className="px-3.5 py-2 bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-500/30 rounded-xl text-xs font-semibold transition flex items-center gap-1.5"
-                >
-                  <Building className="w-3.5 h-3.5" />
-                  Catat Penerimaan Barang
-                </button>
-                <button
-                  onClick={() => {
-                    setInvoiceNumber(`INV-${po.po_number}`);
-                    setShowPayableModal(true);
-                  }}
-                  disabled={actionLoading}
-                  className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow-md shadow-indigo-600/20 transition flex items-center gap-1.5"
-                >
-                  <FileText className="w-3.5 h-3.5" />
-                  Buat Tagihan Utang (Payable)
-                </button>
-              </>
-            )}
-
-            {(po.status === 'DRAFT' || po.status === 'ISSUED') && (
-              <button
-                onClick={() => setShowCancelModal(true)}
-                disabled={actionLoading}
-                className="px-3.5 py-2 bg-rose-600/10 hover:bg-rose-600/20 text-rose-300 border border-rose-500/30 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 disabled:opacity-50"
-              >
-                <Ban className="w-3.5 h-3.5" />
-                Cancel PO
-              </button>
-            )}
-          </div>
-        )}
       </div>
 
       {error && (
@@ -327,12 +167,6 @@ export const PurchaseOrderDetailPage: React.FC<PurchaseOrderDetailPageProps> = (
         </div>
       )}
 
-      {successMsg && (
-        <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-300 text-xs flex items-center gap-2.5">
-          <CheckCircle className="w-4 h-4 shrink-0 text-emerald-400" />
-          <span>{successMsg}</span>
-        </div>
-      )}
 
       {/* Main Metadata Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -553,260 +387,6 @@ export const PurchaseOrderDetailPage: React.FC<PurchaseOrderDetailPageProps> = (
           </div>
         </div>
       </div>
-
-      {/* Cancel PO Modal */}
-      {showCancelModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-6 shadow-2xl">
-            <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <Ban className="w-5 h-5 text-rose-400" />
-              Cancel Purchase Order
-            </h3>
-            <p className="text-xs text-slate-400 mt-1">
-              Cancelling is irreversible. A <code className="text-rose-300">PO_CANCELLED</code> event will be permanently committed to the ledger outbox.
-            </p>
-
-            <form onSubmit={handleCancel} className="mt-4 space-y-4">
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1">
-                  Cancellation Reason
-                </label>
-                <textarea
-                  rows={3}
-                  required
-                  value={cancelReason}
-                  onChange={(e) => setCancelReason(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:ring-2 focus:ring-rose-500"
-                />
-              </div>
-
-              <div className="flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowCancelModal(false)}
-                  className="px-3.5 py-2 bg-slate-800 text-slate-300 rounded-lg text-xs font-medium"
-                >
-                  Back
-                </button>
-                <button
-                  type="submit"
-                  disabled={actionLoading}
-                  className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-semibold shadow-md shadow-rose-600/20"
-                >
-                  {actionLoading ? 'Cancelling...' : 'Confirm Cancellation'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Issue PO Confirmation Modal */}
-      {showIssueModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg p-6 shadow-2xl space-y-4">
-            <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <Send className="w-5 h-5 text-blue-400" />
-              Issue Purchase Order & Anchor to Blockchain
-            </h3>
-            <p className="text-xs text-slate-400">
-              Issuing transitions this purchase order to <span className="text-blue-300 font-semibold">ISSUED</span> state and generates a cryptographic SHA-256 digest committed directly to the Hyperledger Fabric ledger outbox.
-            </p>
-
-            <form onSubmit={handleIssueConfirm} className="space-y-4">
-              <div className="bg-slate-950/80 p-3.5 rounded-xl border border-slate-800 text-xs space-y-2">
-                <div className="flex justify-between text-slate-400">
-                  <span>PO Number:</span>
-                  <span className="font-mono text-white font-semibold">{po.po_number}</span>
-                </div>
-                <div className="flex justify-between text-slate-400">
-                  <span>Total Obligation:</span>
-                  <span className="font-mono text-emerald-400 font-semibold">
-                    {po.currency} {Number(po.total_amount).toLocaleString('id-ID', { minimumFractionDigits: 2 })}
-                  </span>
-                </div>
-                <div className="flex justify-between text-slate-400">
-                  <span>Designated Vendor:</span>
-                  <span className="text-slate-200">{po.vendor?.legal_name}</span>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1">
-                  Document SHA-256 Hash Digest (Optional Override)
-                </label>
-                <input
-                  type="text"
-                  placeholder="Leave empty to auto-calculate cryptographic digest from PO contract data"
-                  value={issueDocHash}
-                  onChange={(e) => setIssueDocHash(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-xs font-mono text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <p className="text-[10px] text-slate-500 mt-1">
-                  If left blank, the server automatically computes an SHA-256 digest across all contract line items, vendor details, and monetary totals.
-                </p>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowIssueModal(false)}
-                  className="px-3.5 py-2 bg-slate-800 text-slate-300 rounded-lg text-xs font-medium"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={actionLoading}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold shadow-md shadow-blue-600/20"
-                >
-                  {actionLoading ? 'Issuing...' : 'Confirm & Ingest to Ledger'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Goods Receipt (BAST / Surat Jalan) Modal */}
-      {showReceiptModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-4">
-            <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <Building className="w-5 h-5 text-amber-400" />
-              Catat Penerimaan Barang (Surat Jalan / BAST)
-            </h3>
-            <p className="text-xs text-slate-400">
-              Mencatat kedatangan fisik barang dari vendor dan menghasilkan event <code className="text-amber-300">GOODS_RECEIVED</code> yang diverifikasi ke Hyperledger Fabric.
-            </p>
-
-            <form onSubmit={handleRecordReceipt} className="space-y-4">
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1">
-                  Nomor Surat Jalan (Delivery Note #)
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Contoh: SJ-2026-VEND-001"
-                  value={deliveryNoteNumber}
-                  onChange={(e) => setDeliveryNoteNumber(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1">
-                  Catatan Penerimaan / Lokasi Gudang
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="Contoh: Barang diterima utuh di Gudang A, segel pabrik lengkap."
-                  value={receiptNotes}
-                  onChange={(e) => setReceiptNotes(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
-                />
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowReceiptModal(false)}
-                  className="px-3.5 py-2 bg-slate-800 text-slate-300 rounded-lg text-xs font-medium"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  disabled={actionLoading}
-                  className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-slate-950 rounded-lg text-xs font-semibold shadow-md shadow-amber-600/20"
-                >
-                  {actionLoading ? 'Menyimpan...' : 'Catat ke Ledger'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Create Accounts Payable Obligation Modal */}
-      {showPayableModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-4">
-            <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <FileText className="w-5 h-5 text-indigo-400" />
-              Terbitkan Pengakuan Utang (Accounts Payable)
-            </h3>
-            <p className="text-xs text-slate-400">
-              Mendaftarkan kewajiban pembayaran formal pada Buku Besar Utang (Accounts Payable Ledger) dan menyegel hash dokumen ke blockchain.
-            </p>
-
-            <form onSubmit={handleCreatePayable} className="space-y-4">
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1">
-                  Nomor Faktur / Invoice
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={invoiceNumber}
-                  onChange={(e) => setInvoiceNumber(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1">
-                    Periode Pembayaran
-                  </label>
-                  <select
-                    value={payablePeriod}
-                    onChange={(e) => setPayablePeriod(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  >
-                    <option value="Bulan 1">Bulan 1 (Januari)</option>
-                    <option value="Bulan 2">Bulan 2 (Februari)</option>
-                    <option value="Bulan 3">Bulan 3 (Maret)</option>
-                    <option value="Bulan 4">Bulan 4 (April Settlement)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1">
-                    Tanggal Jatuh Tempo
-                  </label>
-                  <input
-                    type="date"
-                    required
-                    value={payableDueDate}
-                    onChange={(e) => setPayableDueDate(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  >
-                  </input>
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowPayableModal(false)}
-                  className="px-3.5 py-2 bg-slate-800 text-slate-300 rounded-lg text-xs font-medium"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  disabled={actionLoading}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold shadow-md shadow-indigo-600/20"
-                >
-                  {actionLoading ? 'Menerbitkan...' : 'Terbitkan ke Ledger Utang'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

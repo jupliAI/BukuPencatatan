@@ -72,10 +72,8 @@ export async function runFabricOutboxE2ETests(): Promise<{ passed: number; faile
         legal_name: 'PT Mitra Sukses Fabric',
         vendor_code: 'VND-FAB-001',
         contact_email: 'mitra@fabric.example.com',
-        phone: '+628123456789',
         address: 'Jl. Sudirman Kav 28, Jakarta',
         tax_id: '01.234.567.8-012.000',
-        payment_terms_days: 30,
       },
       procUser
     );
@@ -108,12 +106,11 @@ export async function runFabricOutboxE2ETests(): Promise<{ passed: number; faile
     assert(txRecords[0].transaction_id.startsWith('tx_fabric_'), 'Real Fabric transaction ID recorded in DB');
   }
 
-  // Test 3: Purchase Order Lifecycle -> Fabric Submission
+  // Test 3: Purchase Order Intake -> Fabric Submission
   let poId = '';
-  const expectedDocHash = '3f786850e387550fdab836ed7e6dc881de23001b70e87038c013622150913e23';
 
   {
-    // Step 3a: Create PO (Draft)
+    // Step 3a: Record PO arriving from e-commerce via Switching
     const po = await poService.createPO(
       {
         vendor_id: vendorId,
@@ -133,38 +130,22 @@ export async function runFabricOutboxE2ETests(): Promise<{ passed: number; faile
     );
     poId = po.id;
     assert(po.total_amount === '100000000.00', 'PO total amount computed accurately');
-    assert(po.status === POStatus.DRAFT, 'PO starts in DRAFT status');
+    assert(po.status === POStatus.DRAFT, 'PO recorded in DRAFT status as received');
 
     // Process PO_CREATED event to Fabric
     await outboxService.processPendingEvents();
 
-    // Step 3b: Issue PO
-    const issuedPo = await poService.issuePO(poId, procUser, expectedDocHash);
-    assert(issuedPo.status === POStatus.ISSUED, 'PO status transitioned to ISSUED');
-
-    // Process PO_ISSUED event to Fabric
-    await outboxService.processPendingEvents();
-
-    // Step 3c: Query Fabric Ledger directly for entity history
+    // Step 3b: Query Fabric Ledger directly for entity history
     const ledgerHistory = await fabricService.getTransactionHistory(poId, 'PURCHASE_ORDER');
-    assert(ledgerHistory.length === 2, 'Fabric ledger contains exactly 2 chronological events for this PO');
-    assert(ledgerHistory[0].eventType === 'PO_CREATED', 'First Fabric event is PO_CREATED');
-    assert(ledgerHistory[1].eventType === 'PO_ISSUED', 'Second Fabric event is PO_ISSUED');
+    assert(ledgerHistory.length === 1, 'Fabric ledger contains exactly 1 chronological event for this PO');
+    assert(ledgerHistory[0].eventType === 'PO_CREATED', 'Fabric event is PO_CREATED');
     assert(ledgerHistory[0].amountMinor === '10000000000', 'Amount on Fabric is exact minor units (Rp100,000,000.00)');
-    assert(ledgerHistory[1].documentHash === expectedDocHash, 'PO_ISSUED contains document hash on Fabric');
   }
 
-  // Test 4: Verify Document Hash against Fabric Ledger
-  {
-    const verifyResult = await fabricService.verifyDocumentHash(poId, expectedDocHash);
-    assert(verifyResult.match === true, 'Document hash matches Fabric ledger state');
-    assert(verifyResult.storedHash === expectedDocHash, 'Stored hash returned correctly');
+  // Catatan: PO_ISSUED dan peristiwa lanjutan lainnya hanya lahir dari
+  // e-commerce via Switching, bukan dari dalam aplikasi ini.
 
-    const tamperedResult = await fabricService.verifyDocumentHash(poId, 'tampered-hash-value');
-    assert(tamperedResult.match === false, 'Tampered document hash correctly rejected');
-  }
-
-  // Test 5: Outbox Worker Idempotency with Fabric
+  // Test 4: Outbox Worker Idempotency with Fabric
   {
     const rerunResult = await outboxService.processPendingEvents();
     assert(rerunResult.processed === 0, 'No re-submission occurs on already confirmed events');

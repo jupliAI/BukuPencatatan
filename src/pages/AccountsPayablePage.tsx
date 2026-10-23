@@ -50,14 +50,7 @@ export const AccountsPayablePage: React.FC<AccountsPayablePageProps> = ({
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   // Modals state
-  const [selectedPayable, setSelectedPayable] = useState<Payable | null>(null);
-  const [isApproveOpen, setIsApproveOpen] = useState(false);
-  const [isPaymentOpen, setIsPaymentOpen] = useState(false);
-  const [isSettleOpen, setIsSettleOpen] = useState(false);
   const [isAuditOpen, setIsAuditOpen] = useState(false);
-  const [approvalNotes, setApprovalNotes] = useState('');
-  const [paymentRef, setPaymentRef] = useState('');
-  const [actionLoading, setActionLoading] = useState(false);
   const [auditResult, setAuditResult] = useState<TamperAuditResponse | null>(null);
   const [feedbackMessage, setFeedbackMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -96,97 +89,14 @@ export const AccountsPayablePage: React.FC<AccountsPayablePageProps> = ({
     setTimeout(() => setFeedbackMessage(null), 5000);
   };
 
-  // Action: Approve
-  const handleApprove = async () => {
-    if (!selectedPayable) return;
-    try {
-      setActionLoading(true);
-      await ApiClient.approvePayable(selectedPayable.id, approvalNotes);
-      // Automatically process outbox
-      await ApiClient.triggerProcessOutbox().catch(() => {});
-      showFeedback('success', `Persetujuan berhasil dicatat dan disinkronkan ke Hyperledger Fabric.`);
-      setIsApproveOpen(false);
-      setApprovalNotes('');
-      fetchPayables();
-    } catch (err: any) {
-      showFeedback('error', err.message || 'Gagal menyetujui kewajiban');
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  // Action: Initiate Payment (SP2D)
-  const handleInitiatePayment = async () => {
-    if (!selectedPayable) return;
-    if (!paymentRef.trim()) {
-      alert('Masukkan nomor SP2D / Referensi Bank');
-      return;
-    }
-    try {
-      setActionLoading(true);
-      await ApiClient.initiatePayment(selectedPayable.id, {
-        payment_reference: paymentRef,
-      });
-      await ApiClient.triggerProcessOutbox().catch(() => {});
-      showFeedback('success', `Pencairan dana diajukan dengan ref: ${paymentRef}. Event PAYMENT_INITIATED tercatat di ledger.`);
-      setIsPaymentOpen(false);
-      setPaymentRef('');
-      fetchPayables();
-    } catch (err: any) {
-      showFeedback('error', err.message || 'Gagal mengajukan pencairan');
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  // Action: Confirm Settlement
-  const handleSettle = async () => {
-    if (!selectedPayable) return;
-    try {
-      setActionLoading(true);
-      await ApiClient.settlePayable(selectedPayable.id, paymentRef || undefined);
-      await ApiClient.triggerProcessOutbox().catch(() => {});
-      showFeedback('success', `Pelunasan permanen berhasil dikonfirmasi di blockchain! Status: SETTLED.`);
-      setIsSettleOpen(false);
-      setPaymentRef('');
-      fetchPayables();
-    } catch (err: any) {
-      showFeedback('error', err.message || 'Gagal menyelesaikan pelunasan');
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  // Action: Batch Settle Period
-  const handleBatchSettle = async (period: string) => {
-    if (!confirm(`Konfirmasi pelunasan massal untuk seluruh kewajiban di ${period}? Bukti pelunasan akan dicatat di Hyperledger Fabric.`)) {
-      return;
-    }
-    try {
-      setActionLoading(true);
-      const res = await ApiClient.batchSettle(period);
-      await ApiClient.triggerProcessOutbox().catch(() => {});
-      showFeedback('success', `Pelunasan batch periode ${period} selesai! ${res.count} kewajiban lunas tercatat di blockchain.`);
-      fetchPayables();
-    } catch (err: any) {
-      showFeedback('error', err.message || 'Gagal menjalankan pelunasan batch');
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
   // Action: Audit Integrity
   const handleAudit = async (payable: Payable) => {
-    setSelectedPayable(payable);
     try {
-      setActionLoading(true);
       const res = await ApiClient.auditPayableIntegrity(payable.id);
       setAuditResult(res);
       setIsAuditOpen(true);
     } catch (err: any) {
       showFeedback('error', err.message || 'Gagal mengaudit integritas');
-    } finally {
-      setActionLoading(false);
     }
   };
 
@@ -390,17 +300,6 @@ export const AccountsPayablePage: React.FC<AccountsPayablePageProps> = ({
               Setiap kewajiban yang timbul dicatat secara inkremental pada ledger acara, lalu diselesaikan pada periode settlement.
             </p>
           </div>
-
-          {(currentUser?.role === 'ADMIN' || currentUser?.role === 'FINANCE') && (
-            <button
-              onClick={() => handleBatchSettle('Bulan 4')}
-              disabled={actionLoading}
-              className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold flex items-center gap-2 transition cursor-pointer self-start sm:self-auto"
-            >
-              <CreditCard className="w-3.5 h-3.5 text-emerald-400" />
-              Proses Settlement Periode Jan-Apr
-            </button>
-          )}
         </div>
 
         {/* 4 Steps Timeline */}
@@ -676,48 +575,6 @@ export const AccountsPayablePage: React.FC<AccountsPayablePageProps> = ({
                       {/* Actions */}
                       <td className="py-3.5 px-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
-                          {/* Approve Button */}
-                          {item.status !== 'SETTLED' && (
-                            <button
-                              onClick={() => {
-                                setSelectedPayable(item);
-                                setIsApproveOpen(true);
-                              }}
-                              className="px-2.5 py-1 rounded bg-blue-50 text-blue-700 hover:bg-blue-100 font-medium text-[11px] transition cursor-pointer"
-                              title="Setujui Kewajiban"
-                            >
-                              Setujui
-                            </button>
-                          )}
-
-                          {/* Initiate Payment */}
-                          {item.status === 'APPROVED' && (
-                            <button
-                              onClick={() => {
-                                setSelectedPayable(item);
-                                setIsPaymentOpen(true);
-                              }}
-                              className="px-2.5 py-1 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-medium text-[11px] transition cursor-pointer"
-                              title="Ajukan SP2D"
-                            >
-                              SP2D
-                            </button>
-                          )}
-
-                          {/* Settle */}
-                          {(item.status === 'PAYMENT_INITIATED' || item.status === 'APPROVED') && (
-                            <button
-                              onClick={() => {
-                                setSelectedPayable(item);
-                                setIsSettleOpen(true);
-                              }}
-                              className="px-2.5 py-1 rounded bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-medium text-[11px] transition cursor-pointer"
-                              title="Konfirmasi Pelunasan Permanen"
-                            >
-                              Lunasi
-                            </button>
-                          )}
-
                           {/* Audit Integrity button */}
                           <button
                             onClick={() => handleAudit(item)}
@@ -736,154 +593,6 @@ export const AccountsPayablePage: React.FC<AccountsPayablePageProps> = ({
           </table>
         </div>
       </div>
-
-      {/* APPROVE MODAL */}
-      {isApproveOpen && selectedPayable && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200">
-            <h3 className="text-lg font-bold text-slate-900 mb-1">
-              Persetujuan Kewajiban Pembayaran
-            </h3>
-            <p className="text-xs text-slate-500 mb-4">
-              Persetujuan akan dicatat secara kriptografis pada rantai audit Hyperledger Fabric.
-            </p>
-
-            <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs space-y-1.5 mb-4">
-              <div className="flex justify-between">
-                <span className="text-slate-500">No. Tagihan:</span>
-                <span className="font-bold text-slate-900">{selectedPayable.payable_number}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Nilai:</span>
-                <span className="font-bold text-indigo-700">{formatRupiah(selectedPayable.amount)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Vendor:</span>
-                <span className="font-medium text-slate-800">{selectedPayable.vendor_legal_name}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Role Anda:</span>
-                <span className="font-bold text-purple-700">{currentUser?.role}</span>
-              </div>
-            </div>
-
-            <div className="space-y-2 mb-4">
-              <label className="text-xs font-semibold text-slate-700">Catatan Persetujuan (Opsional)</label>
-              <textarea
-                value={approvalNotes}
-                onChange={(e) => setApprovalNotes(e.target.value)}
-                placeholder="Catatan verifikasi fisik atau kelayakan dokumen pengadaan..."
-                className="w-full text-xs p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                rows={3}
-              />
-            </div>
-
-            <div className="flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setIsApproveOpen(false)}
-                className="px-4 py-2 rounded-xl text-xs font-medium text-slate-600 hover:bg-slate-100"
-              >
-                Batal
-              </button>
-              <button
-                type="button"
-                onClick={handleApprove}
-                disabled={actionLoading}
-                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold flex items-center gap-1.5"
-              >
-                {actionLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-                Tandatangani Persetujuan
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* PAYMENT INITIATE MODAL (SP2D) */}
-      {isPaymentOpen && selectedPayable && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200">
-            <h3 className="text-lg font-bold text-slate-900 mb-1">
-              Pengajuan Pencairan Dana (SP2D)
-            </h3>
-            <p className="text-xs text-slate-500 mb-4">
-              Masukkan nomor Surat Perintah Pencairan Dana (SP2D) atau referensi transfer perbankan.
-            </p>
-
-            <div className="space-y-3 mb-4">
-              <div>
-                <label className="text-xs font-semibold text-slate-700">Nomor Referensi SP2D / Bank</label>
-                <input
-                  type="text"
-                  value={paymentRef}
-                  onChange={(e) => setPaymentRef(e.target.value)}
-                  placeholder="Contoh: SP2D-2026-04-0012 / TRX-BCA-9871"
-                  className="w-full text-xs p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 mt-1"
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setIsPaymentOpen(false)}
-                className="px-4 py-2 rounded-xl text-xs font-medium text-slate-600 hover:bg-slate-100"
-              >
-                Batal
-              </button>
-              <button
-                type="button"
-                onClick={handleInitiatePayment}
-                disabled={actionLoading}
-                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold flex items-center gap-1.5"
-              >
-                {actionLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <CreditCard className="w-3.5 h-3.5" />}
-                Catat Pencairan Dana
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* CONFIRM SETTLEMENT MODAL */}
-      {isSettleOpen && selectedPayable && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200">
-            <h3 className="text-lg font-bold text-slate-900 mb-1">
-              Konfirmasi Pelunasan Permanen
-            </h3>
-            <p className="text-xs text-slate-500 mb-4">
-              Kewajiban ini akan ditandai sebagai <b>SETTLED</b> secara permanen pada blockchain Hyperledger Fabric.
-            </p>
-
-            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-xs mb-4 text-emerald-950 space-y-1">
-              <div className="font-bold">Kewajiban Pembayaran: {selectedPayable.payable_number}</div>
-              <div>Nilai Pelunasan: {formatRupiah(selectedPayable.amount)}</div>
-              <div>Penerima: {selectedPayable.vendor_legal_name}</div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setIsSettleOpen(false)}
-                className="px-4 py-2 rounded-xl text-xs font-medium text-slate-600 hover:bg-slate-100"
-              >
-                Batal
-              </button>
-              <button
-                type="button"
-                onClick={handleSettle}
-                disabled={actionLoading}
-                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold flex items-center gap-1.5"
-              >
-                {actionLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-                Konfirmasi Lunas On-Chain
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* AUDIT INTEGRITY MODAL */}
       {isAuditOpen && auditResult && (
