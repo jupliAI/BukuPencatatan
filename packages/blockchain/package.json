@@ -2,6 +2,7 @@
   "name": "@ledger/blockchain",
   "version": "1.0.0",
   "description": "Blockchain service abstraction and mock adapter for Hyperledger Fabric",
+  "type": "module",
   "main": "src/index.ts",
   "types": "src/index.ts"
 }
