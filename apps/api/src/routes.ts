@@ -538,6 +538,10 @@ export function createApiRouter(): Router {
   // Switching mendorong transaksi e-commerce ke endpoint ini memakai
   // routing rule `targetConfig.endpointUrl`. Pada jalur ini Switching hanya
   // mengirim header Content-Type, jadi token ditaruh di query string URL.
+  //
+  // Rantai outbox → blockchain diproses langsung di dalam request ini karena
+  // worker `setInterval` (server.ts) tidak hidup di lingkungan serverless.
+  // Tanpa langkah ini, PO akan tersimpan tetapi hash-nya tidak pernah terbentuk.
   router.post(
     '/v1/integration/ledger-events',
     asyncHandler(async (req, res) => {
@@ -559,7 +563,24 @@ export function createApiRouter(): Router {
       }
 
       const result = await switchingInboundService.handleLedgerEvent(req.body ?? {});
-      return res.status(202).json(successResponse(result));
+
+      // Hanya diproses bila peristiwa benar-benar diterapkan. Duplikat dan tipe
+      // yang tidak didukung dibiarkan tanpa menyentuh outbox.
+      let ledger: { processed: number; confirmed: number; failed: number; blockchain_status: string | null } | undefined;
+      if (result.applied) {
+        const batchSize = Number(process.env.OUTBOX_BATCH_SIZE) || 20;
+        const outboxResult = await outboxService.processPendingEvents(batchSize);
+        const poId = 'po_id' in result ? result.po_id : undefined;
+        const po = typeof poId === 'string' ? db.purchase_orders.get(poId) : undefined;
+        ledger = {
+          processed: outboxResult.processed,
+          confirmed: outboxResult.confirmed,
+          failed: outboxResult.failed,
+          blockchain_status: po?.blockchain_status ?? null,
+        };
+      }
+
+      return res.status(202).json(successResponse({ ...result, ledger }));
     }),
   );
 
