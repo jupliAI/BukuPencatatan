@@ -18,6 +18,10 @@ export interface CreatePODto {
   currency?: string;
   due_date: string;
   items: CreatePOItemDto[];
+  /** Referensi dari sistem asal (mis. businessTransactionId Switching) untuk dedupe peristiwa masuk. */
+  external_ref?: string;
+  /** Nomor PO milik sistem asal. Bila kosong, nomor digenerate di sini. */
+  external_po_number?: string;
 }
 
 export interface UpdatePODto {
@@ -46,6 +50,23 @@ export class PurchaseOrdersService {
       }
     }
     return `PO-${year}-${String(count).padStart(3, '0')}`;
+  }
+
+  /**
+   * PO pada jalur integrasi diterbitkan sistem lain, sehingga nomornya milik
+   * sistem asal dan harus dipakai apa adanya (dengan cek keunikan).
+   */
+  private resolvePONumber(orgId: string, requested?: string): string {
+    const trimmed = requested?.trim();
+    if (!trimmed) {
+      return this.generatePONumber(orgId);
+    }
+    for (const po of this.db.purchase_orders.values()) {
+      if (po.po_number.toUpperCase() === trimmed.toUpperCase()) {
+        throw new AppError('DUPLICATE_PO_NUMBER', `Purchase order number '${trimmed}' already exists`, 409);
+      }
+    }
+    return trimmed;
   }
 
   async createPO(dto: CreatePODto, currentUser: AuthenticatedUser): Promise<DbPurchaseOrder & { items: DbPurchaseOrderItem[] }> {
@@ -100,7 +121,7 @@ export class PurchaseOrdersService {
     // Calculate server-side total: never trust client for monetary total
     const totalAmount = MoneyUtils.sumTotals(itemTotals);
 
-    const poNumber = this.generatePONumber(orgId);
+    const poNumber = this.resolvePONumber(orgId, dto.external_po_number);
     const newPO: DbPurchaseOrder = {
       id: poId,
       po_number: poNumber,
@@ -139,6 +160,7 @@ export class PurchaseOrdersService {
         total_amount: newPO.total_amount,
         currency: newPO.currency,
         items_count: calculatedItems.length,
+        external_ref: dto.external_ref ?? null,
       },
       status: OutboxStatus.PENDING,
       attempt_count: 0,

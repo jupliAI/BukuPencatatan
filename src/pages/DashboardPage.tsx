@@ -6,7 +6,6 @@ import {
   Users,
   ShieldAlert,
   ShieldCheck,
-  Plus,
   RefreshCw,
   Clock,
   CheckCircle,
@@ -116,15 +115,6 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ currentUser, onNav
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${flushing ? 'animate-spin' : ''}`} />
                 Flush Outbox
-              </button>
-            )}
-            {(currentUser.role === 'ADMIN' || currentUser.role === 'PROCUREMENT_OFFICER') && (
-              <button
-                onClick={() => onNavigate('purchase-orders/new')}
-                className="px-3.5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold shadow-md shadow-blue-600/20 transition flex items-center gap-1.5"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                New PO
               </button>
             )}
           </div>

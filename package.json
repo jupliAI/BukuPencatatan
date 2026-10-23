@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "test": "tsx tests/run-tests.ts",
+    "simulate:switching": "tsx scripts/simulate-switching.ts",
     "lint": "tsc --noEmit"
   },
   "dependencies": {

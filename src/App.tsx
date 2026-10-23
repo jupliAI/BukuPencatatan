@@ -6,7 +6,6 @@ import { LoginPage } from './pages/LoginPage.tsx';
 import { DashboardPage } from './pages/DashboardPage.tsx';
 import { VendorsPage } from './pages/VendorsPage.tsx';
 import { PurchaseOrdersPage } from './pages/PurchaseOrdersPage.tsx';
-import { NewPurchaseOrderPage } from './pages/NewPurchaseOrderPage.tsx';
 import { PurchaseOrderDetailPage } from './pages/PurchaseOrderDetailPage.tsx';
 import { BlockchainLedgerPage } from './pages/BlockchainLedgerPage.tsx';
 import { AccountsPayablePage } from './pages/AccountsPayablePage.tsx';
@@ -120,10 +119,6 @@ export function App() {
           <PurchaseOrdersPage currentUser={currentUser} onNavigate={setActiveTab} />
         )}
 
-        {activeTab === 'purchase-orders/new' && (
-          <NewPurchaseOrderPage currentUser={currentUser} onNavigate={setActiveTab} />
-        )}
-
         {activeTab === 'blockchain-ledger' && (
           <BlockchainLedgerPage
             currentUser={currentUser}
@@ -132,7 +127,7 @@ export function App() {
           />
         )}
 
-        {activeTab.startsWith('purchase-orders/') && activeTab !== 'purchase-orders/new' && (
+        {activeTab.startsWith('purchase-orders/') && (
           <PurchaseOrderDetailPage
             poId={activeTab.replace('purchase-orders/', '')}
             currentUser={currentUser}

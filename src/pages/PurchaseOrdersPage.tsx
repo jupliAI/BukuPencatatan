@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { PurchaseOrder, User } from '../types.ts';
 import { ApiClient } from '../api.ts';
-import { FileText, Plus, Search, Filter, ShieldCheck, Clock, Building, Calendar, ArrowRight } from 'lucide-react';
+import { FileText, Search, Filter, ShieldCheck, Clock, Building, Calendar, ArrowRight } from 'lucide-react';
 
 interface PurchaseOrdersPageProps {
   currentUser: User;
@@ -33,8 +33,6 @@ export const PurchaseOrdersPage: React.FC<PurchaseOrdersPageProps> = ({ currentU
     loadPOs();
   }, [statusFilter, search]);
 
-  const canCreate = currentUser.role === 'ADMIN' || currentUser.role === 'PROCUREMENT_OFFICER';
-
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -48,16 +46,6 @@ export const PurchaseOrdersPage: React.FC<PurchaseOrdersPageProps> = ({ currentU
             Tracking lifecycle obligations for organization <span className="font-semibold text-slate-300">{currentUser.organization.code}</span>
           </p>
         </div>
-
-        {canCreate && (
-          <button
-            onClick={() => onNavigate('purchase-orders/new')}
-            className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold shadow-md shadow-blue-600/20 transition flex items-center gap-1.5"
-          >
-            <Plus className="w-4 h-4" />
-            Create Purchase Order
-          </button>
-        )}
       </div>
 
       {/* Filter and Search Bar */}

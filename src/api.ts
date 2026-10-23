@@ -118,19 +118,6 @@ export const ApiClient = {
     return this.request<PurchaseOrder>(`/purchase-orders/${id}`);
   },
 
-  async createPurchaseOrder(dto: {
-    vendor_id: string;
-    description: string;
-    due_date: string;
-    currency: string;
-    items: { description: string; quantity: number | string; unit_price: string }[];
-  }): Promise<PurchaseOrder> {
-    return this.request<PurchaseOrder>('/purchase-orders', {
-      method: 'POST',
-      body: JSON.stringify(dto),
-    });
-  },
-
   async issuePurchaseOrder(id: string, documentHash?: string) {
     return this.request(`/purchase-orders/${id}/issue`, {
       method: 'POST',

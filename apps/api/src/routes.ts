@@ -11,6 +11,8 @@ import { Role } from './common/types.ts';
 import { successResponse, errorResponse, AppError } from './common/response.dto.ts';
 import { DatabaseService } from './database/db.service.ts';
 import { GatewayWebhookService } from './modules/webhooks/gateway-webhook.service.ts';
+import { SwitchingInboundService } from './modules/integration/switching-inbound.service.ts';
+import { timingSafeStringEqual } from './common/crypto-utils.ts';
 
 export function createApiRouter(): Router {
   const router = Router();
@@ -22,6 +24,7 @@ export function createApiRouter(): Router {
   const outboxService = OutboxService.getInstance();
   const db = DatabaseService.getInstance();
   const gatewayWebhookService = new GatewayWebhookService();
+  const switchingInboundService = new SwitchingInboundService();
 
   // Helper for catching async errors
   const asyncHandler = (fn: (req: Request, res: Response) => Promise<unknown>) => {
@@ -125,16 +128,6 @@ export function createApiRouter(): Router {
   // -------------------------------------------------------------
   // PURCHASE ORDERS ENDPOINTS
   // -------------------------------------------------------------
-  router.post(
-    '/purchase-orders',
-    authMiddleware,
-    requireRoles(Role.ADMIN, Role.PROCUREMENT_OFFICER),
-    asyncHandler(async (req, res) => {
-      const result = await poService.createPO(req.body, req.user!);
-      return res.status(201).json(successResponse(result));
-    })
-  );
-
   router.get(
     '/purchase-orders',
     authMiddleware,
@@ -536,6 +529,37 @@ export function createApiRouter(): Router {
     asyncHandler(async (req, res) => {
       const result = await gatewayWebhookService.handleGatewayWebhook(req.body);
       return res.status(200).json(successResponse(result));
+    }),
+  );
+
+  // -------------------------------------------------------------
+  // SWITCHING HUB INBOUND (Jalur A — business service)
+  // -------------------------------------------------------------
+  // Switching mendorong transaksi e-commerce ke endpoint ini memakai
+  // routing rule `targetConfig.endpointUrl`. Pada jalur ini Switching hanya
+  // mengirim header Content-Type, jadi token ditaruh di query string URL.
+  router.post(
+    '/v1/integration/ledger-events',
+    asyncHandler(async (req, res) => {
+      const expectedToken = process.env.SWITCHING_INBOUND_TOKEN;
+      if (!expectedToken) {
+        return res
+          .status(503)
+          .json(
+            errorResponse('INBOUND_NOT_CONFIGURED', 'SWITCHING_INBOUND_TOKEN is not configured', undefined, req.requestId),
+          );
+      }
+
+      const queryToken = typeof req.query.token === 'string' ? req.query.token : '';
+      const providedToken = req.header('x-switching-token') || queryToken;
+      if (!timingSafeStringEqual(providedToken, expectedToken)) {
+        return res
+          .status(401)
+          .json(errorResponse('UNAUTHORIZED', 'Invalid switching inbound token', undefined, req.requestId));
+      }
+
+      const result = await switchingInboundService.handleLedgerEvent(req.body ?? {});
+      return res.status(202).json(successResponse(result));
     }),
   );
 
