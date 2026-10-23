@@ -7,45 +7,56 @@
  *    per cold start, lalu di-memoize
  *
  * Routing: seluruh request `/api/*` diarahkan ke function ini melalui `vercel.json`.
+ *
+ * Catatan: modul aplikasi dimuat lewat `import()` dinamis (bukan import statis di
+ * top-level). Jika ada dependensi yang gagal dimuat di runtime serverless, kegagalan
+ * itu bisa ditangkap di sini dan dilaporkan sebagai JSON — bukan halaman error
+ * generik dari platform ("A server error occurred") yang menyulitkan diagnosis.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { createApp } from '../apps/api/src/app.ts';
-import { DatabaseService } from '../apps/api/src/database/db.service.ts';
 
-const app = createApp();
+type NodeRequestHandler = (req: IncomingMessage, res: ServerResponse) => void;
 
-let initialization: Promise<void> | null = null;
+let bootstrapPromise: Promise<NodeRequestHandler> | null = null;
 
-function ensureDatabaseReady(): Promise<void> {
-  if (!initialization) {
-    initialization = DatabaseService.getInstance()
-      .seedDefaultData()
-      .catch((err: unknown) => {
-        // Set null agar request berikutnya pada instance ini mencoba inisialisasi ulang.
-        initialization = null;
-        throw err;
-      });
+function getApp(): Promise<NodeRequestHandler> {
+  if (!bootstrapPromise) {
+    bootstrapPromise = (async () => {
+      const { createApp } = await import('../apps/api/src/app.ts');
+      const { DatabaseService } = await import('../apps/api/src/database/db.service.ts');
+
+      const app = createApp();
+      await DatabaseService.getInstance().seedDefaultData();
+      return app as unknown as NodeRequestHandler;
+    })().catch((err: unknown) => {
+      // Set null agar request berikutnya pada instance ini mencoba inisialisasi ulang.
+      bootstrapPromise = null;
+      throw err;
+    });
   }
-  return initialization;
+  return bootstrapPromise;
 }
 
 export default async function handler(req: IncomingMessage, res: ServerResponse): Promise<void> {
   try {
-    await ensureDatabaseReady();
+    const app = await getApp();
+    app(req, res);
   } catch (err) {
+    const error = err as Error & { code?: string };
+    console.error('[vercel] Application bootstrap failed:', error);
+
     res.statusCode = 500;
     res.setHeader('Content-Type', 'application/json');
     res.end(
       JSON.stringify({
         success: false,
         error: {
-          code: 'DATABASE_INIT_FAILED',
-          message: err instanceof Error ? err.message : 'Unknown error',
+          code: 'BOOTSTRAP_FAILED',
+          message: error?.message || 'Unknown error',
+          error_code: error?.code,
+          stack: error?.stack?.split('\n').slice(0, 6).join('\n'),
         },
       }),
     );
-    return;
   }
-
-  (app as unknown as (request: IncomingMessage, response: ServerResponse) => void)(req, res);
 }

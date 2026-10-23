@@ -44,7 +44,7 @@ export class RemoteBlockchainService implements BlockchainService {
     // Trailing slash dibuang agar penggabungan path selalu konsisten.
     this.baseUrl = baseUrl.replace(/\/+$/, '');
     this.token = config?.token ?? process.env.FABRIC_BRIDGE_TOKEN;
-    this.timeoutMs = config?.timeoutMs ?? Number(process.env.FABRIC_BRIDGE_TIMEOUT_MS) || 15000;
+    this.timeoutMs = config?.timeoutMs ?? (Number(process.env.FABRIC_BRIDGE_TIMEOUT_MS) || 15000);
   }
 
   public getProviderName(): string {

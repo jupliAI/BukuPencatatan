@@ -87,7 +87,7 @@ async function requestSwitchingRaw<TResp = unknown>(opts: {
     idempotencyKey,
   } = opts.call;
 
-  const effectiveTimeout = timeoutMs ?? Number(process.env.GATEWAY_TIMEOUT_MS) || 10000;
+  const effectiveTimeout = timeoutMs ?? (Number(process.env.GATEWAY_TIMEOUT_MS) || 10000);
 
   if (!apiKey) throw new Error('callSwitching: apiKey is required');
   if (!apiSecret) throw new Error('callSwitching: apiSecret is required');

@@ -1,8 +1,10 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import * as grpc from '@grpc/grpc-js';
-import { connect, Contract, Gateway, Identity, Signer, signers } from '@hyperledger/fabric-gateway';
+// Hanya tipe yang di-import statis: SDK Fabric (gRPC) dimuat lewat `import()` dinamis
+// di dalam `connect()` supaya provider `mock`/`remote` tidak ikut memuatnya saat boot.
+import type * as grpc from '@grpc/grpc-js';
+import type { Contract, Gateway, Identity, Signer } from '@hyperledger/fabric-gateway';
 
 export interface FabricConfig {
   channelName: string;
@@ -89,29 +91,33 @@ export class FabricConnectionManager {
         return this.createSimulatedContract();
       }
 
-      // 2. Load TLS root CA
+      // 2. Muat SDK Fabric hanya saat koneksi nyata ke peer diperlukan.
+      const grpc = await import('@grpc/grpc-js');
+      const { connect, signers } = await import('@hyperledger/fabric-gateway');
+
+      // 3. Load TLS root CA
       const tlsRootCert = fs.readFileSync(this.config.tlsCertPath);
       const tlsCredentials = grpc.credentials.createSsl(tlsRootCert);
 
-      // 3. Create gRPC client to Fabric Peer
+      // 4. Create gRPC client to Fabric Peer
       this.client = new grpc.Client(this.config.peerEndpoint, tlsCredentials, {
         'grpc.ssl_target_name_override': this.config.peerHostOverride,
         'grpc.default_authority': this.config.peerHostOverride,
       });
 
-      // 4. Load client identity (X.509 Certificate)
+      // 5. Load client identity (X.509 Certificate)
       const credentials = fs.readFileSync(this.config.certPath);
       const identity: Identity = {
         mspId: this.config.mspId,
         credentials,
       };
 
-      // 5. Load private key & create signer
+      // 6. Load private key & create signer
       const privateKeyPem = fs.readFileSync(this.config.keyPath);
       const privateKey = crypto.createPrivateKey(privateKeyPem);
       const signer: Signer = signers.newPrivateKeySigner(privateKey);
 
-      // 6. Connect to Gateway
+      // 7. Connect to Gateway
       this.gateway = connect({
         client: this.client,
         identity,
