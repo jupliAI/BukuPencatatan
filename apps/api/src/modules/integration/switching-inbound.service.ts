@@ -1,7 +1,6 @@
 import { DatabaseService, DbVendor } from '../../database/db.service.ts';
 import { AuthenticatedUser, Role, UserStatus } from '../../common/types.ts';
 import { AppError } from '../../common/response.dto.ts';
-import { VendorsService } from '../vendors/vendors.service.ts';
 import { PurchaseOrdersService, CreatePOItemDto } from '../purchase-orders/po.service.ts';
 
 export const PO_ISSUED_TRANSACTION_TYPE = 'PO_ISSUED';
@@ -41,7 +40,6 @@ export interface SwitchingLedgerEventBody {
  */
 export class SwitchingInboundService {
   private db = DatabaseService.getInstance();
-  private vendorsService = new VendorsService();
   private poService = new PurchaseOrdersService();
 
   async handleLedgerEvent(body: SwitchingLedgerEventBody) {
@@ -74,13 +72,21 @@ export class SwitchingInboundService {
     }
 
     const payload = body.payload ?? {};
+
+    // Nomor PO milik sistem asal (e-commerce). Pada jalur integrasi kita tidak
+    // pernah menerbitkan nomor sendiri — kalau tidak dikirim, peristiwa ditolak.
+    const poNumber = payload.poNumber?.trim();
+    if (!poNumber) {
+      throw new AppError('VALIDATION_ERROR', 'payload.poNumber is required');
+    }
+
     const dueDate = payload.dueDate?.trim();
     if (!dueDate) {
       throw new AppError('VALIDATION_ERROR', 'payload.dueDate is required');
     }
 
     const systemUser = this.resolveSystemUser();
-    const vendor = await this.resolveVendor(payload.vendor, systemUser);
+    const vendor = this.requireVendor(payload.vendor, systemUser);
     const items = this.mapItems(payload.items);
 
     const po = await this.poService.createPO(
@@ -91,7 +97,7 @@ export class SwitchingInboundService {
         due_date: dueDate,
         items,
         external_ref: businessTransactionId,
-        external_po_number: payload.poNumber,
+        external_po_number: poNumber,
       },
       systemUser,
     );
@@ -148,18 +154,15 @@ export class SwitchingInboundService {
     };
   }
 
-  /** Vendor dikelola di sisi kita (Switching tidak menyimpan master vendor), jadi dibuat bila belum ada. */
-  private async resolveVendor(
-    input: SwitchingVendorPayload | undefined,
-    systemUser: AuthenticatedUser,
-  ): Promise<DbVendor> {
+  /**
+   * Master vendor bukan milik Switching, dan kita tidak mengarang data vendor
+   * sendiri. Karena itu vendor harus sudah terdaftar lebih dulu — disuplai dari
+   * e-commerce melalui Switching, atau diinput sekali oleh procurement.
+   */
+  private requireVendor(input: SwitchingVendorPayload | undefined, systemUser: AuthenticatedUser): DbVendor {
     const code = input?.code?.trim();
     if (!code) {
       throw new AppError('VALIDATION_ERROR', 'payload.vendor.code is required');
-    }
-    const legalName = input?.legalName?.trim();
-    if (!legalName) {
-      throw new AppError('VALIDATION_ERROR', 'payload.vendor.legalName is required');
     }
 
     const existing = Array.from(this.db.vendors.values()).find(
@@ -167,18 +170,16 @@ export class SwitchingInboundService {
         vendor.organization_id === systemUser.organizationId &&
         vendor.vendor_code.toUpperCase() === code.toUpperCase(),
     );
-    if (existing) return existing;
 
-    return this.vendorsService.createVendor(
-      {
-        vendor_code: code,
-        legal_name: legalName,
-        tax_id: input?.taxId?.trim() || '-',
-        address: input?.address?.trim() || '-',
-        contact_email: input?.email?.trim() || `${code.toLowerCase()}@switching.local`,
-      },
-      systemUser,
-    );
+    if (!existing) {
+      throw new AppError(
+        'VENDOR_NOT_FOUND',
+        `Vendor '${code}' is not registered for this organization. Supply the vendor master data first.`,
+        409,
+      );
+    }
+
+    return existing;
   }
 
   private mapItems(

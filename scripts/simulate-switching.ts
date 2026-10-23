@@ -25,7 +25,7 @@ interface Scenario {
 
 const scenarios: Scenario[] = [
   {
-    label: 'PO dari e-commerce (vendor baru)',
+    label: 'PO dari e-commerce (vendor VEND-001 sudah terdaftar) — harus diterima',
     body: {
       businessTransactionId: `EC-ORDER-${runId}-001`,
       transactionType: 'PO_ISSUED',
@@ -36,13 +36,7 @@ const scenarios: Scenario[] = [
         description: 'Pengadaan gabah kering 5 ton',
         currency: 'IDR',
         dueDate: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
-        vendor: {
-          code: 'VND-EC-001',
-          legalName: 'Koperasi Tani Makmur',
-          taxId: '01.234.567.8-901.000',
-          address: 'Jl. Sawah Indah No. 7, Sleman',
-          email: 'keuangan@tanimakmur.example.local',
-        },
+        vendor: { code: 'VEND-001' },
         items: [
           { description: 'Gabah kering panen', quantity: 5000, unitPrice: '6200.00' },
           { description: 'Biaya angkut', quantity: 1, unitPrice: '750000.00' },
@@ -51,7 +45,7 @@ const scenarios: Scenario[] = [
     },
   },
   {
-    label: 'PO dari e-commerce (vendor yang sudah ada)',
+    label: 'Vendor belum terdaftar — harus ditolak 409 (kita tidak mengarang vendor)',
     body: {
       businessTransactionId: `EC-ORDER-${runId}-002`,
       transactionType: 'PO_ISSUED',
@@ -61,17 +55,31 @@ const scenarios: Scenario[] = [
         description: 'Pengadaan pupuk NPK',
         currency: 'IDR',
         dueDate: new Date(Date.now() + 45 * 86400000).toISOString().slice(0, 10),
-        vendor: { code: 'VND-EC-001', legalName: 'Koperasi Tani Makmur' },
+        vendor: { code: 'VEND-BELUM-TERDAFTAR' },
         items: [{ description: 'Pupuk NPK 50kg', quantity: 120, unitPrice: '385000.00' }],
       },
     },
   },
   {
-    label: 'Tipe transaksi yang belum didukung (harus diabaikan)',
+    label: 'Nomor PO tidak dikirim — harus ditolak 400 (nomor PO milik e-commerce)',
     body: {
       businessTransactionId: `EC-ORDER-${runId}-003`,
+      transactionType: 'PO_ISSUED',
+      payload: {
+        description: 'Pengadaan tanpa nomor PO dari sistem asal',
+        currency: 'IDR',
+        dueDate: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
+        vendor: { code: 'VEND-001' },
+        items: [{ description: 'Barang contoh', quantity: 1, unitPrice: '10000.00' }],
+      },
+    },
+  },
+  {
+    label: 'Tipe transaksi yang belum didukung — harus diabaikan',
+    body: {
+      businessTransactionId: `EC-ORDER-${runId}-004`,
       transactionType: 'PAYMENT_SETTLED',
-      payload: { settlementRef: `STL-${runId}-003` },
+      payload: { settlementRef: `STL-${runId}-004` },
     },
   },
 ];
