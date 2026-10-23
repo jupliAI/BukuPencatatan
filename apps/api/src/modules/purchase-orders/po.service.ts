@@ -3,6 +3,7 @@ import { DatabaseService, DbPurchaseOrder, DbPurchaseOrderItem } from '../../dat
 import { AuthenticatedUser, Role, POStatus, VendorStatus, OutboxStatus } from '../../common/types.ts';
 import { AppError } from '../../common/response.dto.ts';
 import { MoneyUtils } from '../../common/decimal-utils.ts';
+import { CryptoUtils } from '../../common/crypto-utils.ts';
 import { checkOrgBoundary } from '../../common/auth.guard.ts';
 
 export interface CreatePOItemDto {
@@ -394,23 +395,20 @@ export class PurchaseOrdersService {
     // Compute or validate document hash
     const finalDocHash =
       documentHash ||
-      crypto
-        .createHash('sha256')
-        .update(
-          JSON.stringify({
-            po_number: po.po_number,
-            vendor_id: po.vendor_id,
-            buyer_organization_id: po.buyer_organization_id,
-            total_amount: po.total_amount,
-            currency: po.currency,
-            items: items.map((it) => ({
-              description: it.description,
-              quantity: it.quantity,
-              unit_price: it.unit_price,
-            })),
-          })
-        )
-        .digest('hex');
+      CryptoUtils.sha256Hash(
+        JSON.stringify({
+          po_number: po.po_number,
+          vendor_id: po.vendor_id,
+          buyer_organization_id: po.buyer_organization_id,
+          total_amount: po.total_amount,
+          currency: po.currency,
+          items: items.map((it) => ({
+            description: it.description,
+            quantity: it.quantity,
+            unit_price: it.unit_price,
+          })),
+        })
+      );
 
     // Atomic state update
     po.status = POStatus.ISSUED;
@@ -481,6 +479,10 @@ export class PurchaseOrdersService {
     po.updated_at = new Date();
     this.db.purchase_orders.set(po.id, po);
 
+    // Alasan pembatalan hanya dicatat bila benar-benar diberikan pengguna;
+    // aplikasi tidak lagi mengisi teks cadangan.
+    const trimmedReason = typeof reason === 'string' ? reason.trim() : '';
+
     // Create Outbox Event
     const outboxId = uuidv4();
     this.db.application_events.set(outboxId, {
@@ -493,7 +495,7 @@ export class PurchaseOrdersService {
       payload: {
         po_number: po.po_number,
         cancelled_from_status: po.status,
-        reason: reason || 'Administrative cancellation',
+        reason: trimmedReason.length > 0 ? trimmedReason : null,
       },
       status: OutboxStatus.PENDING,
       attempt_count: 0,
