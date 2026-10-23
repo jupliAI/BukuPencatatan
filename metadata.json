@@ -1,6 +1,6 @@
 {
-  "name": "Blockchain Procurement & Accounts Payable Ledger",
-  "description": "Enterprise procurement obligations and accounts payable ledger with Hyperledger Fabric tamper-evident audit trail.",
+  "name": "Blockchain Transaction Ledger",
+  "description": "Records e-commerce transactions forwarded by the Switching Hub onto Hyperledger Fabric with a tamper-evident audit trail.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

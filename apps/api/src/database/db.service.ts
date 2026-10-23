@@ -118,74 +118,6 @@ export interface DbBlockchainTransaction {
   confirmed_at: Date | null;
 }
 
-export type DbPayableStatus = 'PAYABLE' | 'APPROVED' | 'PAYMENT_INITIATED' | 'PAID' | 'SETTLED';
-
-export interface DbPayableApproval {
-  step: 'PROCUREMENT_OFFICER' | 'PPK' | 'FINANCE' | 'AUTHORIZED_OFFICER';
-  title: string;
-  actor_id: string;
-  actor_name: string;
-  actor_role: Role;
-  timestamp: Date;
-  notes?: string;
-}
-
-export interface DbPayable {
-  id: string;
-  payable_number: string;
-  po_id: string;
-  po_number: string;
-  vendor_id: string;
-  vendor_legal_name: string;
-  buyer_organization_id: string;
-  amount: string; // decimal e.g. "100000000.00"
-  amount_minor: string; // "10000000000"
-  currency: string;
-  period: string; // "Bulan 1", "Bulan 2", "Bulan 3", "Bulan 4"
-  due_date: Date;
-  status: DbPayableStatus;
-  document_hash: string;
-  invoice_number: string;
-  invoice_date: Date;
-  goods_receipt_number?: string;
-  payment_reference?: string | null;
-  blockchain_tx_id?: string | null;
-  approvals: DbPayableApproval[];
-  is_tampered?: boolean;
-  tampered_amount?: string | null;
-  created_at: Date;
-  updated_at: Date;
-}
-
-export interface DbGoodsReceipt {
-  id: string;
-  receipt_number: string;
-  po_id: string;
-  delivery_note_number: string;
-  received_by: string;
-  received_date: Date;
-  verified_by?: string;
-  verified_date?: Date;
-  status: 'RECEIVED' | 'VERIFIED' | 'REJECTED';
-  notes: string;
-  document_hash: string;
-  created_at: Date;
-}
-
-export interface DbInvoice {
-  id: string;
-  invoice_number: string;
-  po_id: string;
-  vendor_id: string;
-  amount: string;
-  currency: string;
-  invoice_date: Date;
-  due_date: Date;
-  status: 'SUBMITTED' | 'VERIFIED' | 'REJECTED';
-  document_hash: string;
-  created_at: Date;
-}
-
 export class DatabaseService {
   private static instance: DatabaseService;
 
@@ -205,9 +137,6 @@ export class DatabaseService {
   public documents: Map<string, DbDocument> = this.createCollection('documents');
   public application_events: Map<string, DbApplicationEvent> = this.createCollection('application_events');
   public blockchain_transactions: Map<string, DbBlockchainTransaction> = this.createCollection('blockchain_transactions');
-  public payables: Map<string, DbPayable> = this.createCollection('payables');
-  public goods_receipts: Map<string, DbGoodsReceipt> = this.createCollection('goods_receipts');
-  public invoices: Map<string, DbInvoice> = this.createCollection('invoices');
 
   private seedPromise: Promise<void> | null = null;
 
@@ -266,9 +195,6 @@ export class DatabaseService {
     hydrate(this.documents, 'documents');
     hydrate(this.application_events, 'application_events');
     hydrate(this.blockchain_transactions, 'blockchain_transactions');
-    hydrate(this.payables, 'payables');
-    hydrate(this.goods_receipts, 'goods_receipts');
-    hydrate(this.invoices, 'invoices');
   }
 
   /**
@@ -505,7 +431,7 @@ export class DatabaseService {
       confirmed_at: new Date('2026-02-01T00:00:02Z'),
     });
 
-    // 6. Seed Additional Vendors for 4-Month Accounts Payable Cycle
+    // 6. Seed Additional Vendors for the 4-Month Procurement Cycle
     const vendor2Id = 'vend-002-default-uuid';
     const vendor2: DbVendor = {
       id: vendor2Id,
@@ -536,7 +462,7 @@ export class DatabaseService {
     };
     this.vendors.set(vendor3.id, vendor3);
 
-    // 7. Seed 4-Month Procurement & Accounts Payable Ledger Cycle
+    // 7. Seed 4-Month Procurement Cycle
     // Month 1: PO-001 (Vendor A, 100M) + PO-002 (Vendor B, 50M) => Total 150M
     const po2Id = 'po-002-default-uuid';
     this.purchase_orders.set(po2Id, {
@@ -616,269 +542,5 @@ export class DatabaseService {
       updated_at: new Date('2026-03-05T00:00:00Z'),
     });
 
-    // Seed Payables representing the Accounts Payable Ledger (Buku Besar Utang)
-    // 1. Month 1 Payable 1: Vendor A (Rp 100M)
-    const pay1Id = 'pay-001-default-uuid';
-    const pay1Hash = CryptoUtils.sha256Hash('PAY-2026-001|PO-2026-001|INV-2026-001|100000000.00|IDR');
-    this.payables.set(pay1Id, {
-      id: pay1Id,
-      payable_number: 'PAY-2026-001',
-      po_id: poId,
-      po_number: 'PO-2026-001',
-      vendor_id: vendorId,
-      vendor_legal_name: 'PT Solusi Teknologi Nusantara',
-      buyer_organization_id: defaultOrgId,
-      amount: '100000000.00',
-      amount_minor: '10000000000',
-      currency: 'IDR',
-      period: 'Bulan 1',
-      due_date: new Date('2026-04-30T00:00:00Z'),
-      status: 'PAYABLE',
-      document_hash: pay1Hash,
-      invoice_number: 'INV-2026-001',
-      invoice_date: new Date('2026-01-20T00:00:00Z'),
-      goods_receipt_number: 'BAST-2026-001',
-      blockchain_tx_id: 'tx_fabric_pay_001_seed',
-      approvals: [
-        {
-          step: 'PROCUREMENT_OFFICER',
-          title: 'Verifikasi Barang & Spesifikasi',
-          actor_id: 'usr-proc-001',
-          actor_name: 'Budi Santoso',
-          actor_role: Role.PROCUREMENT_OFFICER,
-          timestamp: new Date('2026-01-22T00:00:00Z'),
-          notes: 'Fisik rack server telah diperiksa dan sesuai spesifikasi teknis.',
-        },
-      ],
-      created_at: new Date('2026-01-22T00:00:00Z'),
-      updated_at: new Date('2026-01-22T00:00:00Z'),
-    });
-
-    // 2. Month 1 Payable 2: Vendor B (Rp 50M)
-    const pay2Id = 'pay-002-default-uuid';
-    const pay2Hash = CryptoUtils.sha256Hash('PAY-2026-002|PO-2026-002|INV-2026-002|50000000.00|IDR');
-    this.payables.set(pay2Id, {
-      id: pay2Id,
-      payable_number: 'PAY-2026-002',
-      po_id: po2Id,
-      po_number: 'PO-2026-002',
-      vendor_id: vendor2Id,
-      vendor_legal_name: 'PT Graha Mitra Abadi',
-      buyer_organization_id: defaultOrgId,
-      amount: '50000000.00',
-      amount_minor: '5000000000',
-      currency: 'IDR',
-      period: 'Bulan 1',
-      due_date: new Date('2026-04-30T00:00:00Z'),
-      status: 'PAYABLE',
-      document_hash: pay2Hash,
-      invoice_number: 'INV-2026-002',
-      invoice_date: new Date('2026-01-25T00:00:00Z'),
-      goods_receipt_number: 'BAST-2026-002',
-      blockchain_tx_id: 'tx_fabric_pay_002_seed',
-      approvals: [
-        {
-          step: 'PROCUREMENT_OFFICER',
-          title: 'Verifikasi Barang & Spesifikasi',
-          actor_id: 'usr-proc-001',
-          actor_name: 'Budi Santoso',
-          actor_role: Role.PROCUREMENT_OFFICER,
-          timestamp: new Date('2026-01-26T00:00:00Z'),
-          notes: 'Switch core 48-port telah diterima di ruang server.',
-        },
-      ],
-      created_at: new Date('2026-01-26T00:00:00Z'),
-      updated_at: new Date('2026-01-26T00:00:00Z'),
-    });
-
-    // 3. Month 2 Payable 3: Vendor C (Rp 75M)
-    const pay3Id = 'pay-003-default-uuid';
-    const pay3Hash = CryptoUtils.sha256Hash('PAY-2026-003|PO-2026-003|INV-2026-003|75000000.00|IDR');
-    this.payables.set(pay3Id, {
-      id: pay3Id,
-      payable_number: 'PAY-2026-003',
-      po_id: po3Id,
-      po_number: 'PO-2026-003',
-      vendor_id: vendor3Id,
-      vendor_legal_name: 'PT Sentra Logistik Prima',
-      buyer_organization_id: defaultOrgId,
-      amount: '75000000.00',
-      amount_minor: '7500000000',
-      currency: 'IDR',
-      period: 'Bulan 2',
-      due_date: new Date('2026-04-30T00:00:00Z'),
-      status: 'PAYABLE',
-      document_hash: pay3Hash,
-      invoice_number: 'INV-2026-003',
-      invoice_date: new Date('2026-02-15T00:00:00Z'),
-      goods_receipt_number: 'BAST-2026-003',
-      blockchain_tx_id: 'tx_fabric_pay_003_seed',
-      approvals: [
-        {
-          step: 'PROCUREMENT_OFFICER',
-          title: 'Verifikasi Jasa Logistik',
-          actor_id: 'usr-proc-001',
-          actor_name: 'Budi Santoso',
-          actor_role: Role.PROCUREMENT_OFFICER,
-          timestamp: new Date('2026-02-16T00:00:00Z'),
-          notes: 'Layanan logistik multi-regional telah diselesaikan.',
-        },
-      ],
-      created_at: new Date('2026-02-16T00:00:00Z'),
-      updated_at: new Date('2026-02-16T00:00:00Z'),
-    });
-
-    // 4. Month 2 Payable 4: Vendor B (Rp 125M) - already Approved by PPK & Finance
-    const pay4Id = 'pay-004-default-uuid';
-    const pay4Hash = CryptoUtils.sha256Hash('PAY-2026-004|PO-2026-004|INV-2026-004|125000000.00|IDR');
-    this.payables.set(pay4Id, {
-      id: pay4Id,
-      payable_number: 'PAY-2026-004',
-      po_id: po4Id,
-      po_number: 'PO-2026-004',
-      vendor_id: vendor2Id,
-      vendor_legal_name: 'PT Graha Mitra Abadi',
-      buyer_organization_id: defaultOrgId,
-      amount: '125000000.00',
-      amount_minor: '12500000000',
-      currency: 'IDR',
-      period: 'Bulan 2',
-      due_date: new Date('2026-04-30T00:00:00Z'),
-      status: 'APPROVED',
-      document_hash: pay4Hash,
-      invoice_number: 'INV-2026-004',
-      invoice_date: new Date('2026-02-25T00:00:00Z'),
-      goods_receipt_number: 'BAST-2026-004',
-      blockchain_tx_id: 'tx_fabric_pay_004_seed',
-      approvals: [
-        {
-          step: 'PROCUREMENT_OFFICER',
-          title: 'Verifikasi Teknis',
-          actor_id: 'usr-proc-001',
-          actor_name: 'Budi Santoso',
-          actor_role: Role.PROCUREMENT_OFFICER,
-          timestamp: new Date('2026-02-26T00:00:00Z'),
-          notes: 'Lisensi firewall appliance telah aktif valid 3 tahun.',
-        },
-        {
-          step: 'PPK',
-          title: 'Persetujuan Pejabat Pembuat Komitmen',
-          actor_id: 'usr-ppk-001',
-          actor_name: 'Dr. Hendra Gunawan (PPK)',
-          actor_role: Role.PPK,
-          timestamp: new Date('2026-02-27T00:00:00Z'),
-          notes: 'Komitmen anggaran belanja modal disetujui.',
-        },
-        {
-          step: 'FINANCE',
-          title: 'Verifikasi Kelengkapan Berkas Tagihan',
-          actor_id: 'usr-fin-001',
-          actor_name: 'Sri Wahyuni (Finance)',
-          actor_role: Role.FINANCE,
-          timestamp: new Date('2026-02-28T00:00:00Z'),
-          notes: 'Faktur pajak dan kwitansi lengkap.',
-        },
-      ],
-      created_at: new Date('2026-02-26T00:00:00Z'),
-      updated_at: new Date('2026-02-28T00:00:00Z'),
-    });
-
-    // 5. Month 3 Payable 5: Vendor A (Rp 200M)
-    const pay5Id = 'pay-005-default-uuid';
-    const pay5Hash = CryptoUtils.sha256Hash('PAY-2026-005|PO-2026-005|INV-2026-005|200000000.00|IDR');
-    this.payables.set(pay5Id, {
-      id: pay5Id,
-      payable_number: 'PAY-2026-005',
-      po_id: po5Id,
-      po_number: 'PO-2026-005',
-      vendor_id: vendorId,
-      vendor_legal_name: 'PT Solusi Teknologi Nusantara',
-      buyer_organization_id: defaultOrgId,
-      amount: '200000000.00',
-      amount_minor: '20000000000',
-      currency: 'IDR',
-      period: 'Bulan 3',
-      due_date: new Date('2026-04-30T00:00:00Z'),
-      status: 'PAYABLE',
-      document_hash: pay5Hash,
-      invoice_number: 'INV-2026-005',
-      invoice_date: new Date('2026-03-08T00:00:00Z'),
-      goods_receipt_number: 'BAST-2026-005',
-      blockchain_tx_id: 'tx_fabric_pay_005_seed',
-      approvals: [
-        {
-          step: 'PROCUREMENT_OFFICER',
-          title: 'Pemeriksaan Barang Masuk',
-          actor_id: 'usr-proc-001',
-          actor_name: 'Budi Santoso',
-          actor_role: Role.PROCUREMENT_OFFICER,
-          timestamp: new Date('2026-03-09T00:00:00Z'),
-          notes: 'RAM 512GB & dual CPU cluster lolos uji benchmark.',
-        },
-      ],
-      created_at: new Date('2026-03-09T00:00:00Z'),
-      updated_at: new Date('2026-03-09T00:00:00Z'),
-    });
-
-    // 6. Historical Settled Payable: Vendor C (Rp 75M) - for demonstrating SETTLED state on ledger
-    const paySettledId = 'pay-000-settled-uuid';
-    const paySettledHash = CryptoUtils.sha256Hash('PAY-2025-099|PO-2025-099|INV-2025-099|75000000.00|IDR');
-    this.payables.set(paySettledId, {
-      id: paySettledId,
-      payable_number: 'PAY-2025-099',
-      po_id: 'po-000-historical',
-      po_number: 'PO-2025-099',
-      vendor_id: vendor3Id,
-      vendor_legal_name: 'PT Sentra Logistik Prima',
-      buyer_organization_id: defaultOrgId,
-      amount: '75000000.00',
-      amount_minor: '7500000000',
-      currency: 'IDR',
-      period: 'Bulan 4',
-      due_date: new Date('2025-12-31T00:00:00Z'),
-      status: 'SETTLED',
-      document_hash: paySettledHash,
-      invoice_number: 'INV-2025-099',
-      invoice_date: new Date('2025-12-01T00:00:00Z'),
-      goods_receipt_number: 'BAST-2025-099',
-      payment_reference: 'SP2D-2025-12-0044 / TX-BANK-7729',
-      blockchain_tx_id: 'tx_fabric_settled_0099',
-      approvals: [
-        {
-          step: 'PROCUREMENT_OFFICER',
-          title: 'Verifikasi Teknis Selesai',
-          actor_id: 'usr-proc-001',
-          actor_name: 'Budi Santoso',
-          actor_role: Role.PROCUREMENT_OFFICER,
-          timestamp: new Date('2025-12-05T00:00:00Z'),
-        },
-        {
-          step: 'PPK',
-          title: 'Disetujui PPK',
-          actor_id: 'usr-ppk-001',
-          actor_name: 'Dr. Hendra Gunawan (PPK)',
-          actor_role: Role.PPK,
-          timestamp: new Date('2025-12-10T00:00:00Z'),
-        },
-        {
-          step: 'FINANCE',
-          title: 'Verifikasi Pajak & Kelayakan',
-          actor_id: 'usr-fin-001',
-          actor_name: 'Sri Wahyuni (Finance)',
-          actor_role: Role.FINANCE,
-          timestamp: new Date('2025-12-12T00:00:00Z'),
-        },
-        {
-          step: 'AUTHORIZED_OFFICER',
-          title: 'Otorisasi Pencairan Dana SP2D',
-          actor_id: 'usr-auth-001',
-          actor_name: 'Rudi Hartono (Authorized Officer)',
-          actor_role: Role.AUTHORIZED_OFFICER,
-          timestamp: new Date('2025-12-15T00:00:00Z'),
-        },
-      ],
-      created_at: new Date('2025-12-05T00:00:00Z'),
-      updated_at: new Date('2025-12-20T00:00:00Z'),
-    });
   }
 }

@@ -2,7 +2,6 @@ import { Router, Request, Response } from 'express';
 import { AuthService } from './modules/auth/auth.service.ts';
 import { VendorsService } from './modules/vendors/vendors.service.ts';
 import { PurchaseOrdersService } from './modules/purchase-orders/po.service.ts';
-import { PayablesService } from './modules/payables/payables.service.ts';
 import { OutboxService } from './modules/outbox/outbox.service.ts';
 import { BlockchainFactory } from '../../../packages/blockchain/src/index.ts';
 import { authMiddleware, requireRoles } from './common/auth.guard.ts';
@@ -20,7 +19,6 @@ export function createApiRouter(): Router {
   const authService = new AuthService();
   const vendorsService = new VendorsService();
   const poService = new PurchaseOrdersService();
-  const payablesService = new PayablesService();
   const outboxService = OutboxService.getInstance();
   const db = DatabaseService.getInstance();
   const gatewayWebhookService = new GatewayWebhookService();
@@ -140,82 +138,9 @@ export function createApiRouter(): Router {
   // membatalkan PO di sini. Seluruh PO berasal dari e-commerce melalui
   // Switching (lihat /v1/integration/ledger-events).
 
-  // -------------------------------------------------------------
-  // ACCOUNTS PAYABLE LEDGER (BUKU BESAR UTANG) ENDPOINTS
-  // -------------------------------------------------------------
-  router.get(
-    '/payables',
-    authMiddleware,
-    asyncHandler(async (req, res) => {
-      const filter = {
-        period: req.query.period as string,
-        status: req.query.status as string,
-        vendor_id: req.query.vendor_id as string,
-        search: req.query.search as string,
-        page: req.query.page ? Number(req.query.page) : 1,
-        limit: req.query.limit ? Number(req.query.limit) : 20,
-      };
-      const result = await payablesService.getPayables(filter, req.user!);
-      return res.status(200).json(successResponse(result));
-    })
-  );
-
-  router.get(
-    '/payables/summary',
-    authMiddleware,
-    asyncHandler(async (req, res) => {
-      const result = await payablesService.getPayablesSummary(req.user!);
-      return res.status(200).json(successResponse(result));
-    })
-  );
-
-  router.get(
-    '/payables/:id',
-    authMiddleware,
-    asyncHandler(async (req, res) => {
-      const result = await payablesService.getPayableById(req.params.id, req.user!);
-      return res.status(200).json(successResponse(result));
-    })
-  );
-
-  // Catatan: utang hanya dibaca dari catatan yang masuk. Tidak ada endpoint
-  // untuk membuat utang, menyetujui, mencairkan, atau melunasi di sini.
-
-  // -------------------------------------------------------------
-  // TAMPER-EVIDENT DETECTION LAB & INTEGRITY AUDIT
-  // -------------------------------------------------------------
-  router.get(
-    '/payables/:id/audit-integrity',
-    authMiddleware,
-    asyncHandler(async (req, res) => {
-      const result = await payablesService.auditPayableIntegrity(req.params.id, req.user!);
-      return res.status(200).json(successResponse(result));
-    })
-  );
-
-  router.post(
-    '/payables/:id/tamper-simulate',
-    authMiddleware,
-    requireRoles(Role.ADMIN, Role.AUDITOR),
-    asyncHandler(async (req, res) => {
-      const { tampered_amount } = req.body || {};
-      if (!tampered_amount) {
-        throw new AppError('VALIDATION_ERROR', 'tampered_amount is required', 400);
-      }
-      const result = await payablesService.tamperDatabaseRecord(req.params.id, tampered_amount, req.user!);
-      return res.status(200).json(successResponse(result));
-    })
-  );
-
-  router.post(
-    '/payables/:id/tamper-restore',
-    authMiddleware,
-    requireRoles(Role.ADMIN, Role.AUDITOR),
-    asyncHandler(async (req, res) => {
-      const result = await payablesService.restoreDatabaseRecord(req.params.id, req.user!);
-      return res.status(200).json(successResponse(result));
-    })
-  );
+  // Catatan: tidak ada endpoint buku besar utang. Utang bukan entitas yang
+  // dikirim e-commerce melalui Switching, sehingga aplikasi ini tidak
+  // menyimpan maupun menyajikannya.
 
   // -------------------------------------------------------------
   // AUDIT & BLOCKCHAIN OUTBOX MONITORING ENDPOINTS

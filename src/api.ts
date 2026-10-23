@@ -7,9 +7,6 @@ import {
   LedgerHistoryResponse,
   VerifyHashResponse,
   BlockchainStatusResponse,
-  Payable,
-  PayableSummary,
-  TamperAuditResponse,
 } from './types.ts';
 
 const TOKEN_KEY = 'ap_ledger_access_token';
@@ -137,50 +134,5 @@ export const ApiClient = {
   async verifyDocumentHash(entityId: string, documentHash: string): Promise<VerifyHashResponse> {
     const query = new URLSearchParams({ document_hash: documentHash });
     return this.request<VerifyHashResponse>(`/ledger/${entityId}/verify?${query.toString()}`);
-  },
-
-  // Accounts Payable Ledger & Procurement Lifecycle
-  async getPayables(params: {
-    period?: string;
-    status?: string;
-    vendor_id?: string;
-    search?: string;
-    page?: number;
-    limit?: number;
-  } = {}): Promise<{ items: Payable[]; total: number; page: number; limit: number; total_pages: number }> {
-    const query = new URLSearchParams();
-    if (params.period) query.set('period', params.period);
-    if (params.status) query.set('status', params.status);
-    if (params.vendor_id) query.set('vendor_id', params.vendor_id);
-    if (params.search) query.set('search', params.search);
-    if (params.page) query.set('page', String(params.page));
-    if (params.limit) query.set('limit', String(params.limit));
-    return this.request(`/payables?${query.toString()}`);
-  },
-
-  async getPayablesSummary(): Promise<PayableSummary> {
-    return this.request<PayableSummary>('/payables/summary');
-  },
-
-  async getPayable(id: string): Promise<Payable> {
-    return this.request<Payable>(`/payables/${id}`);
-  },
-
-  // Tamper-Evident Lab & Audit Integrity
-  async auditPayableIntegrity(id: string): Promise<TamperAuditResponse> {
-    return this.request<TamperAuditResponse>(`/payables/${id}/audit-integrity`);
-  },
-
-  async tamperPayableSimulate(id: string, tampered_amount: string): Promise<Payable> {
-    return this.request<Payable>(`/payables/${id}/tamper-simulate`, {
-      method: 'POST',
-      body: JSON.stringify({ tampered_amount }),
-    });
-  },
-
-  async restorePayable(id: string): Promise<Payable> {
-    return this.request<Payable>(`/payables/${id}/tamper-restore`, {
-      method: 'POST',
-    });
   },
 };

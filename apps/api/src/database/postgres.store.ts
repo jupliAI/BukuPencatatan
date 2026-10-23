@@ -2,12 +2,12 @@
  * Persistence adapter untuk Neon Postgres (serverless Postgres, dipakai oleh Vercel).
  *
  * Kenapa adapter terpisah & tidak langsung mengganti seluruh service?
- * - Seluruh business service (vendors, purchase-orders, payables, dst) masih memakai
+ * - Seluruh business service (vendors, purchase-orders, dst) masih memakai
  *   Map in-memory secara sinkron.
  * - Adapter ini menjadi jembatan: Map tetap sinkron, tetapi setiap mutasi ditulis ke
  *   Postgres sebagai operasi async (write-through) yang di-flush sebelum response dikirim.
  *
- * Skema 11 tabel di bawah didefinisikan mengikuti interface `Db*` pada `db.service.ts`
+ * Skema tabel di bawah didefinisikan mengikuti interface `Db*` pada `db.service.ts`
  * sehingga mapping kolom ↔ field TypeScript bersifat 1:1 (tanpa layer translasi tambahan).
  *
  * Driver: `@neondatabase/serverless` (HTTP-based, cocok untuk serverless/edge).
@@ -37,13 +37,12 @@ const dec = (name: string, precision = '20,2'): ColumnDef => ({
   kind: 'decimal',
 });
 const int = (name: string): ColumnDef => ({ name, type: 'INTEGER', kind: 'int' });
-const bool = (name: string): ColumnDef => ({ name, type: 'BOOLEAN', kind: 'boolean' });
 const json = (name: string): ColumnDef => ({ name, type: 'JSONB', kind: 'json' });
 const ts = (name: string): ColumnDef => ({ name, type: 'TIMESTAMPTZ', kind: 'timestamp' });
 
 /**
- * Definisi 11 tabel. Nama tabel SAMA PERSIS dengan nama properti di DatabaseService,
- * sehingga `store.createMap('payables')` langsung terhubung ke `db.payables`.
+ * Definisi tabel persistence. Nama tabel SAMA PERSIS dengan nama properti di DatabaseService,
+ * sehingga `store.createMap('purchase_orders')` langsung terhubung ke `db.purchase_orders`.
  */
 export const TABLES: TableDef[] = [
   {
@@ -77,18 +76,6 @@ export const TABLES: TableDef[] = [
   {
     name: 'blockchain_transactions',
     columns: [text('id'), text('application_event_id'), text('transaction_id'), text('event_type'), text('entity_id'), text('entity_type'), text('status'), text('error_message'), ts('submitted_at'), ts('confirmed_at')],
-  },
-  {
-    name: 'payables',
-    columns: [text('id'), text('payable_number'), text('po_id'), text('po_number'), text('vendor_id'), text('vendor_legal_name'), text('buyer_organization_id'), dec('amount'), dec('amount_minor', '30,0'), text('currency'), text('period'), ts('due_date'), text('status'), text('document_hash'), text('invoice_number'), ts('invoice_date'), text('goods_receipt_number'), text('payment_reference'), text('blockchain_tx_id'), json('approvals'), bool('is_tampered'), dec('tampered_amount'), ts('created_at'), ts('updated_at')],
-  },
-  {
-    name: 'goods_receipts',
-    columns: [text('id'), text('receipt_number'), text('po_id'), text('delivery_note_number'), text('received_by'), ts('received_date'), text('verified_by'), ts('verified_date'), text('status'), text('notes'), text('document_hash'), ts('created_at')],
-  },
-  {
-    name: 'invoices',
-    columns: [text('id'), text('invoice_number'), text('po_id'), text('vendor_id'), dec('amount'), text('currency'), ts('invoice_date'), ts('due_date'), text('status'), text('document_hash'), ts('created_at')],
   },
 ];
 

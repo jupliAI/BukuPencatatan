@@ -1,20 +1,15 @@
 import React, { useEffect, useState } from 'react';
-import { User, PurchaseOrder, Vendor, ApplicationEvent, PayableSummary } from '../types.ts';
+import { User, PurchaseOrder, Vendor, ApplicationEvent } from '../types.ts';
 import { ApiClient } from '../api.ts';
 import {
   FileText,
   Users,
-  ShieldAlert,
   ShieldCheck,
   RefreshCw,
   Clock,
   CheckCircle,
   Building,
   ArrowUpRight,
-  BookOpen,
-  DollarSign,
-  Layers,
-  CreditCard,
 } from 'lucide-react';
 
 interface DashboardPageProps {
@@ -26,23 +21,20 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ currentUser, onNav
   const [pos, setPos] = useState<PurchaseOrder[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [events, setEvents] = useState<ApplicationEvent[]>([]);
-  const [summary, setSummary] = useState<PayableSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [flushing, setFlushing] = useState(false);
 
   const loadData = async () => {
     setLoading(true);
     try {
-      const [posRes, vendorsRes, eventsRes, summaryRes] = await Promise.all([
+      const [posRes, vendorsRes, eventsRes] = await Promise.all([
         ApiClient.getPurchaseOrders(),
         ApiClient.getVendors(),
         ApiClient.getAuditEvents(),
-        ApiClient.getPayablesSummary().catch(() => null),
       ]);
       setPos(posRes.items || []);
       setVendors(vendorsRes.items || []);
       setEvents(eventsRes || []);
-      if (summaryRes) setSummary(summaryRes);
     } catch (err) {
       console.error('Failed to load dashboard data:', err);
     } finally {
@@ -85,20 +77,6 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ currentUser, onNav
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => onNavigate('accounts-payable')}
-              className="px-3.5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow-md shadow-indigo-600/20 transition flex items-center gap-1.5 cursor-pointer"
-            >
-              <BookOpen className="w-3.5 h-3.5 text-amber-300" />
-              Buku Besar Utang
-            </button>
-            <button
-              onClick={() => onNavigate('tamper-lab')}
-              className="px-3.5 py-2.5 bg-amber-600 hover:bg-amber-500 text-slate-950 rounded-xl text-xs font-semibold shadow-md shadow-amber-600/20 transition flex items-center gap-1.5 cursor-pointer"
-            >
-              <ShieldAlert className="w-3.5 h-3.5" />
-              Tamper Lab
-            </button>
             <button
               onClick={loadData}
               disabled={loading}

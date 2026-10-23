@@ -1,12 +1,11 @@
 import { runChaincodeTests } from './chaincode.test.ts';
 import { runFabricServiceTests } from './fabric-service.test.ts';
 import { runFabricOutboxE2ETests } from './fabric-outbox-e2e.test.ts';
-import { runPayablesLifecycleTests } from './payables-lifecycle.test.ts';
 import { runAllTests as runPhase2Tests } from './run-tests.ts';
 
 async function main() {
   console.log('\n======================================================');
-  console.log('   FULL SYSTEM VERIFICATION: PHASES 1, 2, 3, AND 4    ');
+  console.log('      FULL SYSTEM VERIFICATION: PHASES 1, 2, AND 3     ');
   console.log('======================================================\n');
 
   let totalPassed = 0;
@@ -32,11 +31,6 @@ async function main() {
     const resE2E = await runFabricOutboxE2ETests();
     totalPassed += resE2E.passed;
     totalFailed += resE2E.failed;
-
-    // 5. Phase 4 Accounts Payable Ledger Suite
-    const resP4 = await runPayablesLifecycleTests();
-    totalPassed += resP4.passed;
-    totalFailed += resP4.failed;
 
     console.log('\n======================================================');
     console.log(`GRAND TOTAL: ${totalPassed} PASSED, ${totalFailed} FAILED`);

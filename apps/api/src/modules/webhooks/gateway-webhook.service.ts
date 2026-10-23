@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
-import { DatabaseService, DbPayable } from '../../database/db.service.ts';
+import { DatabaseService } from '../../database/db.service.ts';
 import { AppError } from '../../common/response.dto.ts';
-import { OutboxStatus, BlockchainTxStatus, Role } from '../../common/types.ts';
+import { OutboxStatus, BlockchainTxStatus } from '../../common/types.ts';
 
 /**
  * Status enum that matches the EXACT Switching backend GatewayStatus from the switching-main
@@ -18,8 +18,8 @@ export type SwitchingGatewayStatus =
 /**
  * Shape 1 — CamelCase DTO, exact 1:1 mirror of switching-main backend's GatewayWebhookDto.
  * Switching calls us after it has already correlated the webhook to a transaction on its
- * side and forwards the status downstream to BukuPencatatan (Accounts Payable
- * Ledger) so we can advance the payable lifecycle.
+ * side and forwards the transaction status downstream to BukuPencatatan so we can
+ * reconcile the blockchain ledger record we hold.
  */
 export interface SwitchingGatewayStatusDto {
   gatewayRequestId: string;
@@ -27,16 +27,6 @@ export interface SwitchingGatewayStatusDto {
   status: SwitchingGatewayStatus;
   blockchainTxHash?: string | null;
   errorMessage?: string | null;
-  /**
-   * Optional extended fields forwarded through the routing/field-mapping pipeline.
-   * Switching injects these from the original payload so we can locate our payable.
-   */
-  payableId?: string;
-  payableNumber?: string;
-  gatewayPaymentRef?: string;
-  finalSettlementRef?: string | null;
-  settledAmountMinor?: string;
-  currency?: string;
   applicationEventId?: string;
   entityId?: string;
   entityType?: string;
@@ -46,10 +36,7 @@ export interface SwitchingGatewayStatusDto {
 export type LegacyGatewayEventType =
   | 'transaction.submitted'
   | 'transaction.confirmed'
-  | 'transaction.failed'
-  | 'payment.gateway_ack'
-  | 'payment.settled'
-  | 'payment.failed';
+  | 'transaction.failed';
 
 /**
  * Shape 2 — dotted event_type schema (direct Gateway → BukuPencatatan, no Switching
@@ -68,12 +55,6 @@ export interface LegacyGatewayEventPayload {
   block_height?: number | string | null;
   network?: string;
   error_message?: string | null;
-  payable_id?: string;
-  payable_number?: string;
-  gateway_payment_ref?: string;
-  final_settlement_ref?: string | null;
-  settled_amount_minor?: string;
-  currency?: string;
 }
 
 export type InboundWebhookPayload = SwitchingGatewayStatusDto | LegacyGatewayEventPayload;
@@ -98,18 +79,9 @@ interface NormalizedWebhook {
     | 'transaction.submitted'
     | 'transaction.confirmed'
     | 'transaction.failed'
-    | 'payment.gateway_ack'
-    | 'payment.settled'
-    | 'payment.failed'
     | 'unknown';
   blockchainTxHash?: string | null;
   errorMessage?: string | null;
-  payableId?: string;
-  payableNumber?: string;
-  gatewayPaymentRef?: string;
-  finalSettlementRef?: string | null;
-  settledAmountMinor?: string;
-  currency?: string;
   applicationEventId?: string;
   entityId?: string;
   entityType?: string;
@@ -120,7 +92,7 @@ interface NormalizedWebhook {
 
 function isSwitchingDto(p: InboundWebhookPayload): p is SwitchingGatewayStatusDto {
   return (p as SwitchingGatewayStatusDto).gatewayRequestId !== undefined &&
-    typeof (p as SwitchingGatewayStatusDto).status !== undefined;
+    typeof (p as SwitchingGatewayStatusDto).status === 'string';
 }
 
 function normalizePayload(p: InboundWebhookPayload): NormalizedWebhook {
@@ -132,14 +104,9 @@ function normalizePayload(p: InboundWebhookPayload): NormalizedWebhook {
         statusCategory = 'transaction.submitted';
         break;
       case 'confirmed':
-        statusCategory =
-          (p.finalSettlementRef || p.payableId || p.payableNumber)
-            ? 'payment.settled'
-            : 'transaction.confirmed';
+        statusCategory = 'transaction.confirmed';
         break;
       case 'failed':
-        statusCategory =
-          (p.payableId || p.payableNumber) ? 'payment.failed' : 'transaction.failed';
       case 'timeout':
         statusCategory = 'transaction.failed';
         break;
@@ -151,12 +118,6 @@ function normalizePayload(p: InboundWebhookPayload): NormalizedWebhook {
       statusCategory,
       blockchainTxHash: p.blockchainTxHash ?? null,
       errorMessage: p.errorMessage ?? null,
-      payableId: p.payableId,
-      payableNumber: p.payableNumber,
-      gatewayPaymentRef: p.gatewayPaymentRef,
-      finalSettlementRef: p.finalSettlementRef,
-      settledAmountMinor: p.settledAmountMinor,
-      currency: p.currency,
       applicationEventId: p.applicationEventId,
       entityId: p.entityId,
       entityType: p.entityType,
@@ -172,12 +133,6 @@ function normalizePayload(p: InboundWebhookPayload): NormalizedWebhook {
     statusCategory: p.event_type,
     blockchainTxHash: p.blockchain_tx_id ?? null,
     errorMessage: p.error_message ?? null,
-    payableId: p.payable_id,
-    payableNumber: p.payable_number,
-    gatewayPaymentRef: p.gateway_payment_ref,
-    finalSettlementRef: p.final_settlement_ref,
-    settledAmountMinor: p.settled_amount_minor,
-    currency: p.currency,
     applicationEventId: p.application_event_id,
     entityId: p.entity_id,
     entityType: p.entity_type,
@@ -210,15 +165,6 @@ export class GatewayWebhookService {
         break;
       case 'transaction.failed':
         updatedEntity = this.handleTransactionFailed(n);
-        break;
-      case 'payment.gateway_ack':
-        updatedEntity = this.handlePaymentGatewayAck(n);
-        break;
-      case 'payment.settled':
-        updatedEntity = this.handlePaymentSettled(n);
-        break;
-      case 'payment.failed':
-        updatedEntity = this.handlePaymentFailed(n);
         break;
       default:
         return {
@@ -262,8 +208,8 @@ export class GatewayWebhookService {
 
   private recordInboundEvent(eventId: string, n: NormalizedWebhook): void {
     try {
-      const entityId = n.payableId ?? n.entityId ?? n.gatewayRequestId;
-      const entityType = n.payableId ? 'PAYABLE' : n.entityType ?? 'GATEWAY_CALLBACK';
+      const entityId = n.entityId ?? n.gatewayRequestId;
+      const entityType = n.entityType ?? 'GATEWAY_CALLBACK';
       this.db.application_events.set(eventId, {
         id: eventId,
         event_type: `INBOUND_HOOK::${n.statusCategory}`,
@@ -375,115 +321,5 @@ export class GatewayWebhookService {
       }
     }
     return undefined;
-  }
-
-  private resolvePayable(n: NormalizedWebhook): DbPayable | null {
-    if (n.payableId && this.db.payables.has(n.payableId)) {
-      return this.db.payables.get(n.payableId) ?? null;
-    }
-    if (n.payableNumber) {
-      const byNum = Array.from(this.db.payables.values()).find(
-        (pay) => pay.payable_number === n.payableNumber,
-      );
-      if (byNum) return byNum;
-    }
-    return null;
-  }
-
-  private handlePaymentGatewayAck(
-    n: NormalizedWebhook,
-  ): InboundWebhookResult['updatedEntity'] {
-    const payable = this.resolvePayable(n);
-    if (!payable) return undefined;
-    if (payable.status === 'PAYABLE' || payable.status === 'APPROVED') {
-      payable.status = 'PAYMENT_INITIATED';
-    }
-    if (n.gatewayPaymentRef && !payable.payment_reference) {
-      payable.payment_reference = n.gatewayPaymentRef;
-    }
-    payable.updated_at = new Date();
-    return { type: 'payable', id: payable.id, status: payable.status };
-  }
-
-  private handlePaymentSettled(
-    n: NormalizedWebhook,
-  ): InboundWebhookResult['updatedEntity'] {
-    const payable = this.resolvePayable(n);
-    if (!payable) return undefined;
-
-    payable.status = 'SETTLED';
-    payable.updated_at = new Date();
-    if (n.finalSettlementRef) {
-      payable.payment_reference = n.finalSettlementRef;
-    } else if (n.gatewayPaymentRef && !payable.payment_reference) {
-      payable.payment_reference = n.gatewayPaymentRef;
-    }
-
-    const po = payable.po_id ? this.db.purchase_orders.get(payable.po_id) : null;
-    if (po) {
-      po.updated_at = new Date();
-    }
-
-    this.emitSettlementOutbox(payable, n);
-
-    return { type: 'payable', id: payable.id, status: payable.status };
-  }
-
-  private handlePaymentFailed(
-    n: NormalizedWebhook,
-  ): InboundWebhookResult['updatedEntity'] {
-    const payable = this.resolvePayable(n);
-    if (!payable) return undefined;
-    if (n.gatewayPaymentRef && !payable.payment_reference) {
-      payable.payment_reference = n.gatewayPaymentRef;
-    }
-    payable.updated_at = new Date();
-    return { type: 'payable', id: payable.id, status: payable.status };
-  }
-
-  private emitSettlementOutbox(payable: DbPayable, n: NormalizedWebhook): void {
-    try {
-      const existingSettlement = Array.from(this.db.application_events.values()).find(
-        (ev) =>
-          ev.event_type === 'SETTLED' &&
-          ev.entity_id === payable.id &&
-          ev.status === OutboxStatus.CONFIRMED,
-      );
-      if (existingSettlement) return;
-
-      const eventId = uuidv4();
-      this.db.application_events.set(eventId, {
-        id: eventId,
-        event_type: 'SETTLED',
-        entity_id: payable.id,
-        entity_type: 'SETTLEMENT',
-        actor_id: null,
-        organization_id: payable.buyer_organization_id,
-        payload: {
-          payable_id: payable.id,
-          payable_number: payable.payable_number,
-          po_id: payable.po_id,
-          po_number: payable.po_number,
-          vendor_id: payable.vendor_id,
-          vendor_legal_name: payable.vendor_legal_name,
-          amount: payable.amount,
-          amount_minor: n.settledAmountMinor ?? payable.amount_minor,
-          currency: n.currency ?? payable.currency,
-          payment_reference: n.finalSettlementRef ?? payable.payment_reference,
-          gateway_request_id: n.gatewayRequestId,
-          document_hash: payable.document_hash,
-          settled_at: n.occurredAt ?? new Date().toISOString(),
-          source: 'gateway_webhook',
-        },
-        status: OutboxStatus.CONFIRMED,
-        attempt_count: 1,
-        last_error: null,
-        created_at: new Date(),
-        processed_at: new Date(),
-      });
-    } catch {
-      // Non-fatal: settlement audit is secondary; the primary contract for a webhook is
-      // simply acknowledging the message.
-    }
   }
 }

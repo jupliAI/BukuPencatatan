@@ -1,4 +1,4 @@
-// Prisma schema for Blockchain Procurement & Accounts Payable Ledger
+// Prisma schema for Blockchain Transaction Ledger
 // Phase 2: Core Domain & Audit Outbox
 
 generator client {

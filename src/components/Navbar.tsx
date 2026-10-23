@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { User, Role } from '../types.ts';
 import { ApiClient } from '../api.ts';
-import { ShieldCheck, Building2, UserCircle, LogOut, FileText, Users, LayoutDashboard, RefreshCw, Cpu, Menu, X } from 'lucide-react';
+import { ShieldCheck, Building2, UserCircle, LogOut, Users, LayoutDashboard, RefreshCw, Cpu, Menu, X } from 'lucide-react';
 
 interface NavbarProps {
   currentUser: User | null;
@@ -28,13 +28,6 @@ const NAV_ITEMS: NavItem[] = [
     isActive: (tab) => tab === 'dashboard',
   },
   {
-    key: 'accounts-payable',
-    label: 'Buku Besar Utang',
-    icon: <FileText className="w-4 h-4 text-amber-400" />,
-    activeClass: 'bg-indigo-600 text-white shadow-sm font-semibold',
-    isActive: (tab) => tab === 'accounts-payable',
-  },
-  {
     key: 'purchase-orders',
     label: 'Purchase Orders',
     icon: <Building2 className="w-4 h-4" />,
@@ -47,13 +40,6 @@ const NAV_ITEMS: NavItem[] = [
     icon: <Cpu className="w-4 h-4 text-indigo-400" />,
     activeClass: 'bg-slate-800 text-white',
     isActive: (tab) => tab === 'blockchain-ledger',
-  },
-  {
-    key: 'tamper-lab',
-    label: 'Tamper Lab',
-    icon: <ShieldCheck className="w-4 h-4 text-amber-300" />,
-    activeClass: 'bg-amber-600 text-white shadow-sm',
-    isActive: (tab) => tab === 'tamper-lab',
   },
   {
     key: 'vendors',
@@ -105,7 +91,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
             <div className="min-w-0">
               <div className="font-bold text-base tracking-tight leading-tight flex items-center gap-2 min-w-0">
-                <span className="truncate">AP Ledger</span>
+                <span className="truncate">Ledger Transaksi</span>
                 <span className="hidden sm:inline text-[10px] uppercase font-semibold tracking-wider px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shrink-0">
                   Phase 3 Fabric
                 </span>
